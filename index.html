@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ハザマ ─ 本編プロジェクト（本町エリア）</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <div class="frame">
+    <div class="top">
+      <span>ハザマウォッチ <span class="dot">◈</span> 本編ビルド（本町）</span>
+      <span id="clock">17:42</span>
+    </div>
+
+    <div id="introPane" class="intro">
+      <h1>ハザマ <span>─ 本編プロジェクト 第一歩</span></h1>
+      <p>ファイルを分割し、本町エリアの店舗データを <em>data.js</em> から読み込むデータ駆動構成にしました。
+      遠近圧縮は廃止し、等倍表示＋Yソートのみで奥行きを作っています。</p>
+      <div class="keys">
+        <b>WASD / 矢印</b> 移動<br>
+        探索中：ヨドミに近づくだけで戦闘開始<br>
+        戦闘中：<b>J</b>こうげき　<b>U</b>際弾　<b>K</b>際シフト　<b>I</b>なごり水　<b>L</b>定着
+      </div>
+      <button class="startbtn" onclick="Hazama.start()">際に踏み込む ▸</button>
+    </div>
+
+    <div id="wrap" style="display:none">
+      <canvas id="cv"></canvas>
+      <div class="hud" id="battleHud" style="display:none">
+        <div class="meter"><div class="lab">主人公 HP</div><div class="bar hp"><i id="phpBar" style="width:100%"></i></div></div>
+        <div class="meter"><div class="lab">際力</div><div class="bar kw"><i id="kwBar" style="width:50%"></i></div></div>
+        <div class="meter"><div class="lab" id="foeLab">あわいもの HP</div><div class="bar hp"><i id="fhpBar" style="width:100%"></i></div></div>
+        <div class="meter" id="allyMeter" style="display:none"><div class="lab" id="allyLab">仲間 HP</div><div class="bar al"><i id="allyBar" style="width:100%"></i></div></div>
+      </div>
+      <div class="encur" id="enCur">縁 0</div>
+      <div class="banner" id="banner"><div class="big" id="bBig"></div><div class="sub" id="bSub"></div></div>
+      <div class="fade" id="fade"></div>
+      <div id="touch">
+        <div id="stick"><div id="nub"></div></div>
+        <div class="tbtns" id="battleBtns" style="display:none">
+          <button class="tb" id="tShift">際シフト<small>K</small></button>
+          <button class="tb" id="tAtk">こうげき<small>J</small></button>
+          <button class="tb" id="tSkill">際弾<small>U</small></button>
+          <button class="tb" id="tItem">なごり水<small>I</small></button>
+          <button class="tb" id="tAnchor" style="grid-column:span 2;width:auto;border-radius:14px">定着<small>L</small></button>
+        </div>
+      </div>
+    </div>
+    <div class="foot" id="foot">WASD 移動 ／ ヨドミに近づくと戦闘開始</div>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/data.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/explore.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
