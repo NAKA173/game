@@ -1,6 +1,8 @@
 /*
  * explore.js
  * 街歩き（Yソート2D、遠近圧縮なし）。data.js の駅データから店舗を構築する。
+ * 道は折れ線（複数区間の直線）として生成し、店舗・ヨドミ・隣駅の乗り場はその道沿いに配置する。
+ * 駅ごとの座標は stationId から作る疑似乱数で決めるため、同じ駅は毎回同じレイアウトになる。
  * ヨドミに近づくとバトルへ遷移する。
  */
 window.Hazama = window.Hazama || {};
@@ -13,7 +15,8 @@ Hazama.Explore = (function(){
   let P, St, onEnterBattle;
   const wallColors = ['#4a4266','#43395c','#3c3452','#4e4468'];
   const state = {
-    buildings: [], sparkles: [], cat: {x:0,y:0,vx:0,vy:0,timer:0,say:0},
+    buildings: [], sparkles: [], decor: [], road: [],
+    cat: {x:0,y:0,vx:0,vy:0,timer:0,say:0},
     yodomi: {x:0,y:0,r:26,active:true,glow:1},
     warps: [], traveling: false,
     dust: [],
@@ -23,28 +26,96 @@ Hazama.Explore = (function(){
     P = sharedP; St = sharedSt; onEnterBattle = enterBattleFn;
   }
 
-  // 駅データから店舗インスタンスを組み立てる（データ駆動の要）
-  // 店舗数が0〜N軒のどの駅データを渡しても、同じロジックでジグザグ配置のマップを組み立てる。
+  // 駅IDから決定論的な疑似乱数を作る（同じ駅は毎回同じレイアウトになる）。
+  function hashStr(s){
+    let h = 2166136261;
+    for (let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function mulberry32(seed){
+    let a = seed >>> 0;
+    return function(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function distToSegment(p, a, b){
+    const dx=b.x-a.x, dy=b.y-a.y, len2=dx*dx+dy*dy || 1;
+    let t=((p.x-a.x)*dx+(p.y-a.y)*dy)/len2; t=Math.max(0,Math.min(1,t));
+    return Math.hypot(p.x-(a.x+dx*t), p.y-(a.y+dy*t));
+  }
+
+  // 道を「出発点(プレイヤー初期位置)→ハブ→各出口」の折れ線群として生成する。
+  // 出口＝隣駅の乗り場（1〜4件、駅によって変わる）＋ヨドミ。同じロジックでどの駅にも対応する。
+  function buildRoad(warps, rand){
+    const spawn = { x: E.W*0.5, y: E.H*0.86 };
+    const hub = { x: E.W*(0.36+rand()*0.28), y: E.H*(0.44+rand()*0.12) };
+    const edges = [{ a: spawn, b: hub }];
+    const yodomiPos = { x: E.W*(0.24+rand()*0.52), y: E.H*(0.15+rand()*0.10) };
+    warps.map(w => ({ x:w.x, y:w.y })).concat([yodomiPos]).forEach(t => {
+      const mt = 0.3 + rand()*0.35;
+      const mid = {
+        x: hub.x + (t.x-hub.x)*mt + (rand()-0.5)*70,
+        y: hub.y + (t.y-hub.y)*mt + (rand()-0.5)*46,
+      };
+      edges.push({ a: hub, b: mid }, { a: mid, b: t });
+    });
+    return { edges, yodomiPos };
+  }
+
+  // 道沿いに店舗を配置する（データ駆動の要）。店舗数が0〜N軒のどの駅データを渡しても、
+  // 道の区間からランダムに点を選び、垂直方向にオフセットして重ならない位置を探す。
   // 特定の駅名・店舗IDには一切依存しない（本町専用のハードコードはここには置かない）。
-  function buildFromStation(stationId){
+  function placeBuildings(stationId, edges, rand){
     const station = D.stations[stationId];
-    state.buildings = [];
-    state.stationId = stationId;
-    state.station = station || null;
-    if (!station || !station.shops) return;
+    const buildings = [];
+    if (!station || !station.shops) return buildings;
     station.shops.forEach((shop, i) => {
-      const row = Math.floor(i / 2);
-      const side = i % 2 === 0 ? 0.14 : 0.86;
-      const y = E.H * 0.30 + row * 46;
-      state.buildings.push({
-        x: E.W * side, y, w: 150, h: 70, shop,
+      let spot = null;
+      for (let tries=0; tries<50 && !spot; tries++){
+        const edge = edges[Math.floor(rand()*edges.length)];
+        const t = 0.15 + rand()*0.55;
+        const px = edge.a.x + (edge.b.x-edge.a.x)*t, py = edge.a.y + (edge.b.y-edge.a.y)*t;
+        const dx = edge.b.x-edge.a.x, dy = edge.b.y-edge.a.y, len = Math.hypot(dx,dy) || 1;
+        const nx = -dy/len, ny = dx/len;
+        // 建物のスプライトは常に正面(下向き)固定なので、道に対して自然に見えるよう
+        // 縦成分のあるオフセットは常に「道より上」に建物が来る側を選ぶ。
+        const side = Math.abs(ny) > 0.05 ? (ny > 0 ? -1 : 1) : (rand()<0.5?-1:1);
+        const offset = 50 + rand()*28;
+        const bx = px + nx*offset*side, by = py + ny*offset*side;
+        if (bx < 95 || bx > E.W-95 || by < E.H*0.14 || by > E.H*0.80) continue;
+        if (buildings.some(b => Math.hypot(b.x-bx, b.y-by) < 115)) continue;
+        spot = { x: bx, y: by };
+      }
+      if (!spot) spot = { x: E.W*(0.28+(i%3)*0.24), y: E.H*(0.30+Math.floor(i/3)*0.16) };
+      buildings.push({
+        x: spot.x, y: spot.y, w: 150, h: 70, shop,
         wall: wallColors[i % wallColors.length], roof:'#2a2540', roofDark:'#1c1830',
       });
     });
+    return buildings;
+  }
+
+  // 木・生垣などの通行できない装飾物。道・建物・ヨドミ・乗り場から一定距離を空けて散らす。
+  function buildDecor(edges, buildings, warps, yodomiPos, rand){
+    const decor = [];
+    for (let tries=0; tries<220 && decor.length<9; tries++){
+      const x = 60 + rand()*(E.W-120), y = E.H*0.18 + rand()*(E.H*0.58);
+      if (edges.some(e => distToSegment({x,y}, e.a, e.b) < 32)) continue;
+      if (buildings.some(b => Math.hypot(b.x-x,b.y-y) < 75)) continue;
+      if (warps.some(w => Math.hypot(w.x-x,w.y-y) < 60)) continue;
+      if (Math.hypot(yodomiPos.x-x, yodomiPos.y-y) < 55) continue;
+      if (decor.some(d => Math.hypot(d.x-x,d.y-y) < 36)) continue;
+      decor.push({ x, y, kind: rand()<0.65?'tree':'hedge', s: 0.85+rand()*0.4 });
+    }
+    return decor;
   }
 
   // 隣駅への乗り場（駅間移動の入口）を組み立てる。data.js の adjacentStations() が
   // 返す隣駅を、路線に関わらず同じロジックでマップ端（左＝prev、右＝next）に配置する。
+  // 1駅から複数路線に乗り換えられる場合（例：追分）は同じ側に縦に並べる。
   function buildWarps(stationId){
     const adj = D.adjacentStations(stationId);
     state.warps = [];
@@ -66,17 +137,25 @@ Hazama.Explore = (function(){
     state.traveling = false;
     if (spawn){ P.x = spawn.x; P.y = spawn.y; } else { P.x = E.W*0.5; P.y = E.H*0.86; }
     P.hp = P.maxhp;
-    buildFromStation(stationId);
+    state.stationId = stationId;
+    state.station = D.stations[stationId] || null;
+
     buildWarps(stationId);
+    const rand = mulberry32(hashStr(stationId));
+    const road = buildRoad(state.warps, rand);
+    state.road = road.edges;
+    state.buildings = placeBuildings(stationId, road.edges, rand);
+    state.decor = buildDecor(road.edges, state.buildings, state.warps, road.yodomiPos, rand);
+
     state.sparkles = [];
     for (let i=0;i<6;i++){
       state.sparkles.push({ x: E.W*(0.3+Math.random()*0.4), y: E.H*(0.35+Math.random()*0.4), got:false, ph:Math.random()*6 });
     }
     state.cat = { x:E.W*0.4, y:E.H*0.55, vx:0, vy:0, timer:0, say:0 };
-    state.yodomi = { x:E.W*0.5, y:E.H*0.20, r:26, active:true, glow:1 };
+    state.yodomi = { x: road.yodomiPos.x, y: road.yodomiPos.y, r:26, active:true, glow:1 };
     document.getElementById('battleHud').style.display = 'none';
     document.getElementById('battleBtns').style.display = 'none';
-    document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始 ／ 端の乗り場から隣駅へ';
+    document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始 ／ 道の先の乗り場から隣駅へ';
   }
 
   // 隣駅への乗車演出。フェードで暗転→到着駅を組み立て直し、出発方向と逆側の乗り場に出す。
@@ -231,6 +310,30 @@ Hazama.Explore = (function(){
     ctx.fillText(w.name, 0, -68);
     ctx.restore();
   }
+  function drawRoad(){
+    const edges = state.road;
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#352f4a'; ctx.lineWidth = 30;
+    edges.forEach(e => { ctx.beginPath(); ctx.moveTo(e.a.x,e.a.y); ctx.lineTo(e.b.x,e.b.y); ctx.stroke(); });
+    ctx.setLineDash([4,8]); ctx.strokeStyle = 'rgba(232,200,106,.28)'; ctx.lineWidth = 2;
+    edges.forEach(e => { ctx.beginPath(); ctx.moveTo(e.a.x,e.a.y); ctx.lineTo(e.b.x,e.b.y); ctx.stroke(); });
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  function drawDecorItem(d){
+    ctx.save(); ctx.translate(d.x, d.y); ctx.scale(d.s, d.s);
+    if (d.kind === 'tree'){
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(0,2,11,4,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#3a5a34'; ctx.beginPath(); ctx.arc(0,-15,13,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#4d7345'; ctx.beginPath(); ctx.arc(-4,-19,9,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#5a3a28'; ctx.fillRect(-3,-6,6,10);
+    } else {
+      ctx.fillStyle = '#2e4a2a'; ctx.fillRect(-16,-15,32,15);
+      ctx.fillStyle = '#436b3c'; ctx.fillRect(-16,-17,32,6);
+    }
+    ctx.restore();
+  }
   function drawDust(){
     state.dust.forEach(d => { d.life--;
       ctx.save(); ctx.globalAlpha = Math.max(0, d.life/16*0.35);
@@ -250,11 +353,8 @@ Hazama.Explore = (function(){
 
   function draw(){
     E.drawGround();
-    ctx.save(); ctx.globalAlpha = .35+.15*Math.sin(St.t*0.05);
-    ctx.strokeStyle = '#e8c86a'; ctx.lineWidth = 2; ctx.setLineDash([4,8]);
-    ctx.beginPath(); ctx.moveTo(E.W/2, E.horizon()); ctx.lineTo(E.W/2, E.H); ctx.stroke();
-    ctx.setLineDash([]); ctx.restore();
-
+    drawRoad();
+    state.decor.forEach(drawDecorItem);
     state.buildings.forEach(drawShop);
     state.sparkles.forEach(drawSparkle);
     drawYodomi();

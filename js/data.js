@@ -142,11 +142,24 @@ Hazama.Data = {
   },
 
   // 路線ごとの駅の並び（駅間移動の隣接判定に使う）。環状線は循環、支線は末端で行き止まり。
-  // 現時点では環状線のみ実データ化。他の支線も同じ形式で並びを追加していける。
+  // 支線は分岐元の環状線の駅IDを配列の先頭に含める形で表現する（例：野際支線は追分から分岐）。
+  // これにより追分のような乗換駅は、環状線の隣駅に加えて支線の隣駅も自動的に得られる。
   lines: {
     kanjosen: { name:'環状線', loop:true, stations:[
       'honmachi','futatsumori','shotengaimae','kamotsuekiato','oiwake',
       'nakasu','hashiba','wasurezaka','miyanosakai','tsukino',
+    ]},
+    nogiwasen: { name:'野際支線', loop:false, stations:[
+      'oiwake','nogiwa','yamagiwa','mumei','shimizu',
+    ]},
+    denensen: { name:'田園支線', loop:false, stations:[
+      'miyanosakai','inamori','hozakai','nokyomae','dambata',
+    ]},
+    rinkaisen: { name:'臨海支線', loop:false, stations:[
+      'hashiba','misakihama','hamadori','minatomachi','watarise',
+    ]},
+    maboroshisen: { name:'幻の支線', loop:false, stations:[
+      'oiwake','tokimori','kasumigaya','ikuno','higan',
     ]},
   },
 
