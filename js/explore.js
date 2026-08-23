@@ -13,7 +13,6 @@ Hazama.Explore = (function(){
   const ctx = E.ctx;
 
   let P, St, onEnterBattle;
-  const wallColors = ['#4a4266','#43395c','#3c3452','#4e4468'];
   const state = {
     buildings: [], sparkles: [], decor: [], road: [],
     cat: {x:0,y:0,vx:0,vy:0,timer:0,say:0},
@@ -25,6 +24,43 @@ Hazama.Explore = (function(){
   function bindShared(sharedP, sharedSt, enterBattleFn){
     P = sharedP; St = sharedSt; onEnterBattle = enterBattleFn;
   }
+
+  // ==== ドット絵プロップの試験導入 ==================================
+  // engine.js の低解像度プロップ・システムを使って、プレイヤー人物と
+  // 店舗1種類だけをドット絵化した試作。方向性がよければ他の建物・装飾にも展開する。
+
+  // 人物：10x20ドットの簡易チビキャラ。body/face/hair を差し替えれば主人公にも仲間にも使える。
+  E.defprop('person', 10, 20, (g, rng, opts) => {
+    const body = opts.body || '#2a2540', face = opts.face || '#d8b98a', hair = opts.hair || '#1a1730';
+    const bodyLo = E.shade(body,0.72), bodyHi = E.shade(body,1.25), shoe = E.shade(body,0.5);
+    E.rc(g,2,15,2,4,bodyLo); E.rc(g,6,15,2,4,bodyLo);
+    E.rc(g,2,19,2,1,shoe); E.rc(g,6,19,2,1,shoe);
+    E.rc(g,1,7,8,8,body); E.rc(g,1,7,1,8,bodyLo); E.rc(g,8,7,1,8,bodyHi); E.rc(g,1,7,7,1,bodyHi);
+    E.rc(g,0,8,1,6,bodyLo); E.rc(g,9,8,1,6,bodyLo);
+    E.rc(g,2,2,6,5,face); E.rc(g,2,2,1,5,E.shade(face,0.85)); E.rc(g,7,2,1,5,E.shade(face,0.85));
+    E.rc(g,1,0,8,3,hair); E.rc(g,1,3,1,2,hair); E.rc(g,8,3,1,2,hair);
+    E.px(g,3,4,E.shade(face,0.35)); E.px(g,6,4,E.shade(face,0.35));
+  });
+
+  // 店舗（試作1種）：24x34ドット。壁の陰影・パネル継ぎ目・汚れ・窓の点灯差・雨だれを
+  // rng で個体ごとにばらつかせる。屋根含めて壁本体はここで作り、看板は別途通常解像度で重ねる。
+  E.defprop('shopA', 24, 34, (g, rng) => {
+    const wall = E.PAL.wall, wallLo = E.shade(wall,0.78), wallHi = E.shade(wall,1.18);
+    E.rc(g,0,8,24,26,wall); E.rc(g,0,8,1,26,wallLo); E.rc(g,23,8,1,26,wallHi);
+    for (let yy=13; yy<32; yy+=5) E.rc(g,1,yy,22,1,E.shade(wall,0.86));
+    E.speck(g, rng, 1,20,22,12, E.shade(wall,0.6), 9);
+    E.rc(g,-1,4,26,5,E.PAL.roof); E.rc(g,-1,8,26,1,E.PAL.roofDark);
+    for (let xx=-1; xx<25; xx+=3) E.rc(g,xx,4,1,5,E.shade(E.PAL.roof,0.82));
+    [3,15].forEach(wx => {
+      const wc = rng.f() < 0.55 ? E.PAL.window : E.PAL.windowDim;
+      E.rc(g,wx,13,6,6,E.PAL.frame);
+      E.rc(g,wx+1,14,4,4,wc); E.rc(g,wx+1,14,1,4,E.shade(wc,0.7)); E.rc(g,wx+1,14,4,1,E.shade(wc,1.15));
+    });
+    E.rc(g,9,25,6,9,E.PAL.door); E.rc(g,9,25,6,1,E.shade(E.PAL.door,1.6));
+    E.rc(g,14,29,1,2,E.shade(E.PAL.cream,0.9));
+    if (rng.f() < 0.5) E.drip(g, rng, rng.i(2,21), 9, 14, E.shade(wall,0.55));
+  });
+  const SHOP_SPRITE_SCALE = 3.5;
 
   // 駅IDから決定論的な疑似乱数を作る（同じ駅は毎回同じレイアウトになる）。
   function hashStr(s){
@@ -90,10 +126,7 @@ Hazama.Explore = (function(){
         spot = { x: bx, y: by };
       }
       if (!spot) spot = { x: E.W*(0.28+(i%3)*0.24), y: E.H*(0.30+Math.floor(i/3)*0.16) };
-      buildings.push({
-        x: spot.x, y: spot.y, w: 150, h: 70, shop,
-        wall: wallColors[i % wallColors.length], roof:'#2a2540', roofDark:'#1c1830',
-      });
+      buildings.push({ x: spot.x, y: spot.y, shop });
     });
     return buildings;
   }
@@ -222,47 +255,21 @@ Hazama.Explore = (function(){
     }
   }
 
+  // 試作：壁・屋根・窓・ドアはドット絵プロップ（shopA）に置き換え。看板だけは可読性のため
+  // 通常解像度のベクター文字のまま、プロップの上に重ねて描く。
   function drawShop(b){
-    const w=b.w, h=b.h;
-    ctx.save(); ctx.translate(b.x, b.y);
-    ctx.imageSmoothingEnabled = false;
+    E.drawSprite('shopA', b.shop.id, b.x, b.y, SHOP_SPRITE_SCALE);
 
-    ctx.fillStyle = b.wall; ctx.fillRect(-w/2,-h,w,h);
-    ctx.fillStyle = 'rgba(0,0,0,.16)';
-    for (let yy=-h+14; yy<-6; yy+=9) ctx.fillRect(-w/2,yy,w,2);
-    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(w/2-6,-h,6,h);
-
-    const roofH = 16;
-    ctx.fillStyle = b.roof; ctx.fillRect(-w/2-4,-h-roofH,w+8,roofH);
-    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(-w/2-4,-h-4,w+8,4);
-    ctx.fillStyle = b.roofDark;
-    for (let xx=-w/2-4; xx<w/2+4; xx+=10) ctx.fillRect(xx,-h-roofH,5,roofH);
-
-    const winY = -h+14;
-    [-w/2+16, w/2-16-14].forEach(wx => {
-      ctx.fillStyle = '#241f3a'; ctx.fillRect(wx-2,winY-2,18,18);
-      ctx.fillStyle = '#ffce8a'; ctx.fillRect(wx,winY,14,14);
-      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(wx+6,winY,2,14); ctx.fillRect(wx,winY+6,14,2);
-    });
-
-    ctx.fillStyle = '#1a1420'; ctx.fillRect(-11,-30,22,30);
-    ctx.fillStyle = b.shop.bg; ctx.fillRect(-11,-30,22,10);
-
-    const signW = w-16, signX = -signW/2, signY = -h+2;
-    ctx.fillStyle = b.shop.bg; ctx.fillRect(signX,signY,signW,20);
+    const spriteH = 34*SHOP_SPRITE_SCALE, spriteW = 24*SHOP_SPRITE_SCALE;
+    const signW = Math.max(spriteW+10, 92), signX = b.x-signW/2, signY = b.y-spriteH-18;
+    ctx.save();
+    ctx.fillStyle = b.shop.bg; ctx.fillRect(signX,signY,signW,18);
     ctx.fillStyle = 'rgba(0,0,0,.18)';
     for (let i=0;i<Math.floor(signW/12);i++){
-      ctx.beginPath(); ctx.moveTo(signX+i*12,signY+20); ctx.lineTo(signX+i*12+6,signY+25); ctx.lineTo(signX+i*12+12,signY+20); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(signX+i*12,signY+18); ctx.lineTo(signX+i*12+6,signY+23); ctx.lineTo(signX+i*12+12,signY+18); ctx.fill();
     }
-    ctx.fillStyle = '#f4e6c8'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(b.shop.name, 0, signY+14);
-
-    const lx = w/2+6, ly = -h+18;
-    ctx.strokeStyle = '#5a4a30'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(lx,-h-4); ctx.lineTo(lx,ly-8); ctx.stroke();
-    ctx.fillStyle = '#ff9d4d'; ctx.beginPath(); ctx.ellipse(lx,ly,7,9,0,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.moveTo(lx,ly-9); ctx.lineTo(lx,ly+9); ctx.stroke();
-
+    ctx.fillStyle = '#f4e6c8'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(b.shop.name, b.x, signY+13);
     ctx.restore();
   }
 
@@ -343,12 +350,15 @@ Hazama.Explore = (function(){
   }
   function drawPlayerSprite(){
     E.shadow(P.x, P.y);
-    E.drawPerson(P.x, P.y, P.dir, {body:'#2a2540',face:'#d8b98a',hair:'#1a1730'});
+    E.drawSprite('person', 'player', P.x, P.y, 4, {body:'#2a2540',face:'#d8b98a',hair:'#1a1730'});
   }
   function drawAllySprite(ally){
     E.shadow(ally.ex, ally.ey);
-    E.drawPerson(ally.ex, ally.ey, ally.edir||{x:0,y:1},
-      {body:'#245a52',face:'#c8b98a',hair:'#123330',label:'#7fd1c1'}, ally.name);
+    E.drawSprite('person', 'ally', ally.ex, ally.ey, 4, {body:'#245a52',face:'#c8b98a',hair:'#123330'});
+    if (ally.name){
+      ctx.fillStyle = '#7fd1c1'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(ally.name, ally.ex, ally.ey-86);
+    }
   }
 
   function draw(){

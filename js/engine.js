@@ -157,9 +157,85 @@ Hazama.Engine = (function(){
     list.slice().sort((a,b) => a.y - b.y).forEach(e => e.fn());
   }
 
+  // ==== ドット絵プロップ・システム（試験導入） ====================
+  // 等倍のベクター図形の代わりに、低解像度キャンバスへ1ドット単位で描き、
+  // それを imageSmoothingEnabled=false で拡大表示することで「打ち込んだドット絵」に近い
+  // 見た目を作る。同じ見た目を毎フレーム再計算しないよう、生成結果は座標/IDから
+  // 決定的なキー（seedKey）でキャッシュする＝同じ個体は再読込しても同じ絵になる。
+
+  // 現在使っている色をベースにしたパレット。shade() で明るさを掛けて陰影を作る。
+  const PAL = {
+    wall:'#4a4266', roof:'#2a2540', roofDark:'#1c1830',
+    window:'#ffce8a', windowDim:'#3a3550', frame:'#241f3a', door:'#1a1420',
+    cream:'#f4e6c8', leaf:'#3a5a34', leafLit:'#4d7345', bark:'#5a3a28',
+  };
+  function shade(hex, mult){
+    const n = parseInt(hex.slice(1),16);
+    const c = v => Math.min(255, Math.max(0, Math.round(v*mult)));
+    const r = c((n>>16)&255), g = c((n>>8)&255), b = c(n&255);
+    return '#' + ((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+  }
+
+  function hashStr(s){
+    let h = 2166136261;
+    for (let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  // 決定論的な疑似乱数（同じseedなら毎回同じ列を返す）。f()=0〜1の小数、i(lo,hi)=整数。
+  function makeRNG(seed){
+    let a = seed >>> 0;
+    function f(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    return { f, i:(lo,hi) => lo + Math.floor(f()*(hi-lo+1)) };
+  }
+
+  // 低解像度キャンバス g へ描く最小プリミティブ。
+  function px(g, x, y, color){ g.fillStyle = color; g.fillRect(x|0, y|0, 1, 1); }
+  function rc(g, x, y, w, h, color){ g.fillStyle = color; g.fillRect(x|0, y|0, w|0, h|0); }
+  // 汚れ・粒状のノイズを count 個ばらまく（経年変化っぽさを出す）。
+  function speck(g, rng, x, y, w, h, color, count){
+    for (let i=0;i<count;i++) px(g, x+rng.i(0,w-1), y+rng.i(0,h-1), color);
+  }
+  // 縦方向の雨だれ・錆だれ（欠け欠けの筋）。
+  function drip(g, rng, x, y0, len, color){
+    for (let i=0;i<len;i++){ if (rng.f() < 0.7) px(g, x, y0+i, color); }
+  }
+
+  // プロップ定義の登録／生成キャッシュ。
+  const propDefs = {};
+  const spriteCache = new Map();
+  // id: プロップ種別名, w/h: ネイティブ解像度(ドット数), drawFn(g, rng, opts): 描画処理
+  function defprop(id, w, h, drawFn){ propDefs[id] = { w, h, drawFn }; }
+  function getSprite(propId, seedKey, opts){
+    const key = propId + '#' + seedKey;
+    let s = spriteCache.get(key);
+    if (s) return s;
+    const def = propDefs[propId];
+    const c = document.createElement('canvas'); c.width = def.w; c.height = def.h;
+    const g = c.getContext('2d');
+    def.drawFn(g, makeRNG(hashStr(key)), opts || {});
+    s = { canvas: c, w: def.w, h: def.h };
+    spriteCache.set(key, s);
+    return s;
+  }
+  // seedKey ごとに一度だけ生成してキャッシュしたスプライトを、ワールド座標 (x,y) を
+  // 下端中央として scale 倍に拡大描画する。
+  function drawSprite(propId, seedKey, x, y, scale, opts){
+    const s = getSprite(propId, seedKey, opts);
+    ctx.save(); ctx.imageSmoothingEnabled = false;
+    const dw = s.w*scale, dh = s.h*scale;
+    ctx.drawImage(s.canvas, Math.round(x-dw/2), Math.round(y-dh), dw, dh);
+    ctx.restore();
+  }
+
   return {
     ctx, get W(){return W;}, get H(){return H;}, get keys(){return keys;}, get tv(){return tv;},
     resize, bindKeyboard, bindStick, bindButton, readAxis,
     banner, fadeThen, horizon, drawGround, shadow, drawPerson, drawYSorted,
+    PAL, shade, makeRNG, hashStr, px, rc, speck, drip, defprop, drawSprite,
   };
 })();
