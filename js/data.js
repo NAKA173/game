@@ -395,4 +395,81 @@ Hazama.Data = {
     anchorBaseChance: 0.45, anchorKiwaFactor: 0.004, anchorWobbleFactor: 0.3,
     kiwaRegenPerAttack: 7, kiwaRegenIdleInterval: 40,
   },
+
+  // 全カテゴリを横断して item id から表示用情報（名前・価格・所属カテゴリ）を引く共通ルックアップ。
+  // もちもの・ショップ・戦闘のどこからでもこれ一本で参照できるようにする。
+  // 装備（belt/dial/needle の配列）だけは元データがオブジェクトでなく文字列配列なので、
+  // "equip:<slot>:<index>" という合成IDでアクセスする。
+  itemInfo(id){
+    if (id === 'nagorimizu' || id === 'nagorimizu_ge') return { id:'nagorimizu_ge', name:this.items.nagorimizu.name, price:300, category:'medicine' };
+    for (const cat of ['talismans','charms']){
+      const hit = this.items[cat][id];
+      if (hit) return { id, name:hit.name, price:hit.price, effect:hit.effect, category:cat };
+    }
+    if (this.items.blueprints[id]){
+      const hit = this.items.blueprints[id];
+      return { id, name:hit.name, materials:hit.materials, result:hit.result, category:'blueprints' };
+    }
+    for (const list of Object.values(this.items.medicine)){
+      const hit = list.find(v => v.id === id);
+      if (hit) return { id, name:hit.name, price:hit.price, effect:hit.effect, category:'medicine' };
+    }
+    if (this.items.materials[id]){
+      const hit = this.items.materials[id];
+      return { id, name:hit.name, category:'materials', tier:hit.tier };
+    }
+    if (id.startsWith('equip:')){
+      const [, slot, idxStr] = id.split(':'); const idx = +idxStr;
+      const raw = (this.items.equipment[slot] || [])[idx];
+      if (raw) return { id, name:raw, slot, index:idx, category:'equipment' };
+    }
+    return null;
+  },
+
+  // ショップ種別ごとの取り扱いカテゴリ。26駅への個別割り当てまではまだ無いので、
+  // 各町に自動生成される「コンビニ」「際屋」「自販機」がこのカタログを参照する形にしている。
+  shopCatalogs: {
+    konbini: { name:'コンビニ', kind:'item',
+      items: ['nagorimizu_ge','yorimizu','kiwazamashi_ge','kiwazamashi_chu','nigoridome','kuufukushinogi'] },
+    kiwaya: { name:'際屋', kind:'item',
+      items: ['ashidome','yusaburi','sakaime','utsushi'] },
+    vending: { name:'自販機', kind:'vending',
+      items: ['nagorimizu_ge','kiwazamashi_ge'] },
+    kiwakuji: { name:'際くじ屋台', kind:'lottery', cost:150,
+      items: ['ashidome','yusaburi','sakaime','nagorimizu_ge','yorimizu','kiwazamashi_chu'] },
+    // もちもの（ハザマウォッチのアプリ）から、街を歩かずどこでも注文できる通販。取扱いはコンビニ・際屋の合算。
+    netshop: { name:'ネットショップ', kind:'item',
+      items: ['nagorimizu_ge','yorimizu','kiwazamashi_ge','kiwazamashi_chu','nigoridome','kuufukushinogi',
+        'ashidome','yusaburi','sakaime','utsushi'] },
+  },
+
+  // 店舗内で店員が発するちょっとした会話フレーバー（種別ごとのプール。interior.js がランダムに1つ選ぶ）。
+  npcFlavor: {
+    food: ['いらっしゃい', '今日は際が濃いね、気をつけて帰りな', 'ゆっくりしていって', '出汁からこだわってるんだ'],
+    konbini: ['いらっしゃいませ', '新商品、入荷してますよ', 'なんでも揃ってます', '際弾もこっちで売ってますよ'],
+    kiwaya: ['際屋へようこそ', 'お札はしっかり効くよ', '今日はどれにする？', 'その眼、際が見えてるね'],
+    kiwakuji: ['1回でどう？', '大当たりが出るかもよ', '運試し、やってく？'],
+  },
+
+  // 主人公の自宅（story_bible_v1.md §1：朔＝新市街＝本町、灯里＝旧市街＝宮ノ境）。
+  // 休むとHP・際力が全回復する、ホーム拠点として機能する。
+  homes: {
+    saku: { charId:'saku', stationId:'honmachi', name:'常盤家' },
+    akari: { charId:'akari', stationId:'miyanosakai', name:'宮野家' },
+  },
+
+  // 序章冒頭シーン（story_bible_v1.md §5 の脚本をほぼそのまま採用）。新規開始（朔）の最初に流す。
+  introScript: [
+    { speaker:'', text:'（画面：踏切の遮断機が下りかけている。朔、駆け足で近づく）' },
+    { speaker:'朔', text:'あー、もう、また閉まる……！' },
+    { speaker:'', text:'（遮断機が完全に下りる。電車の音が近づく。朔、立ち止まる）' },
+    { speaker:'朔', text:'……あれ。何だろう、この感じ。耳の奥がずきん、とする。踏切の向こう側が、なんだか一瞬、遠くに見えた気がした。' },
+    { speaker:'', text:'（踏切の向こうに、うっすらと猫のようなシルエットが揺らめく。電車が通過し、シルエットは消える）' },
+    { speaker:'朔', text:'今の……見間違いだよな。' },
+    { speaker:'', text:'（遮断機が上がる。朔、歩き出そうとした足元に、見覚えのない腕時計が落ちている）' },
+    { speaker:'朔', text:'なんだこれ……誰かの忘れ物？' },
+    { speaker:'', text:'（時計を拾い上げた瞬間、針が逆回転し、静止する。文字盤の奥に、金色の光が一瞬だけ瞬く）' },
+    { speaker:'朔', text:'うわっ！？' },
+    { speaker:'ナレーション', text:'その日、ヨナガ市の際（きわ）が、また一つ、ひらいた。' },
+  ],
 };

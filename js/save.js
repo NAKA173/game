@@ -30,6 +30,7 @@ Hazama.Save = (function(){
       charId: data.charId, stationId: data.stationId,
       px: data.px, py: data.py, en: data.en, gt: data.gt,
       playtimeSec: data.playtimeSec,
+      inventory: data.inventory,
       diary: diaryLine(data.charId, data.stationId, data.gt),
       savedAt: Date.now(),
     };

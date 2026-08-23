@@ -8,11 +8,14 @@ window.Hazama = window.Hazama || {};
 Hazama.Battle = (function(){
   const E = Hazama.Engine;
   const D = Hazama.Data;
+  const Inv = Hazama.Inventory;
   const B = D.balance;
   const ctx = E.ctx;
 
   let P, St; // main.js から共有される主人公・全体状態への参照
-  let ally = null;
+  // あわいものパーティ：前衛3体（バトル・街の両方に付いてきて戦う）＋控え3体（バトルには出ない待機枠）。
+  const party = { front: [], reserve: [] };
+  let allySeq = 0;
   let foe = null, proj = null, explosions = [];
 
   function bindShared(sharedP, sharedSt){
@@ -56,6 +59,8 @@ Hazama.Battle = (function(){
     P.x = E.W * 0.30; P.y = E.H * 0.62;
     P.atkCD=0; P.skillCD=0; P.shiftCD=0; P.iFrames=0; P.inSeam=false;
     proj = null; explosions = [];
+    // 前衛メンバーを画面内・主人公の近くへ並べ直す（街での追従座標のまま持ち込まれるとバトル画面外に出るため）。
+    party.front.forEach((a,i) => { a.ex = P.x - 60 - i*36; a.ey = P.y + 10 + i*14; a.atkCD = 20+i*10; });
     document.getElementById('battleHud').style.display = 'flex';
     document.getElementById('battleBtns').style.display = 'grid';
     document.getElementById('foot').innerHTML = 'J こうげき ／ U 際弾 ／ K 際シフト ／ I なごり水 ／ L 定着';
@@ -69,10 +74,17 @@ Hazama.Battle = (function(){
     document.getElementById('fhpBar').style.width = (foe ? Math.max(0,foe.hp)/foe.maxhp*100 : 0) + '%';
     document.getElementById('foeLab').textContent = foe
       ? (foe.state==='wobble' ? 'あわいもの ＜揺らぎ＞' : 'あわいもの HP') : '（討伐済）';
-    if (ally){
-      document.getElementById('allyMeter').style.display = 'block';
-      document.getElementById('allyBar').style.width = Math.max(0,ally.hp)/ally.maxhp*100 + '%';
-      document.getElementById('allyLab').textContent = ally.name + ' HP';
+    for (let i=0;i<3;i++){
+      const a = party.front[i];
+      const meter = document.getElementById('allyMeter'+i);
+      if (!meter) continue;
+      if (a){
+        meter.style.display = 'block';
+        document.getElementById('allyBar'+i).style.width = Math.max(0,a.hp)/a.maxhp*100 + '%';
+        document.getElementById('allyLab'+i).textContent = a.name + ' HP';
+      } else {
+        meter.style.display = 'none';
+      }
     }
   }
 
@@ -84,6 +96,7 @@ Hazama.Battle = (function(){
       let dmg = B.attackDamageMin + Math.random()*(B.attackDamageMax-B.attackDamageMin) | 0;
       if (foe.weak > 0){ dmg = Math.round(dmg*B.critMultiplier); foe.weak = 0;
         flash('#e8c86a'); E.banner('会心','弱点を突いた',600); }
+      dmg = Math.round(dmg * Inv.equipMod().atkMult);
       foe.hp -= dmg; St.kiwa = Math.min(100, St.kiwa + B.kiwaRegenPerAttack*charMod('kiwaRegenMult'));
       foe.x += P.dir.x*4; foe.y += P.dir.y*4;
       checkWobble(); updateBars();
@@ -111,18 +124,22 @@ Hazama.Battle = (function(){
     updateBars();
   }
 
+  // 手持ちの回復薬から一番効果の高いものを自動選択して使う（バトル中はリアルタイム操作のため、
+  // 一覧から選ぶメニューは置かず、Iキー1つで賄えるようにする簡易実装）。
+  const HEAL_PRIORITY = ['sakamodorimizu','yosuganoshizuku','yorimizu','nagorimizu_ge'];
   function useItem(){
-    if (P.items <= 0) return;
-    if (P.hp >= P.maxhp){ E.banner('満タン','なごり水は不要',600); return; }
-    P.items--; P.hp = Math.min(P.maxhp, P.hp + D.items.nagorimizu.value);
-    E.banner('なごり水','HPが 回復した',700); updateBars();
+    if (P.hp >= P.maxhp){ E.banner('満タン','回復薬は 不要',600); return; }
+    const id = HEAL_PRIORITY.find(pid => Inv.has(pid));
+    if (!id){ E.banner('薬がない','回復できる薬を 持っていない',700); return; }
+    const res = Inv.useItem(id, P, St);
+    E.banner(D.itemInfo(id).name, res.msg, 700); updateBars();
   }
 
   function shift(){
     if (P.shiftCD > 0) return;
     if (St.kiwa < B.shiftCost){ E.banner('際力不足','際シフトには際力'+B.shiftCost+'以上',700); return; }
     St.kiwa -= B.shiftCost; P.shiftCD = Math.round(B.shiftCooldown*charMod('shiftCooldownMult'));
-    P.iFrames = B.iFrames; P.inSeam = true;
+    P.iFrames = B.iFrames + Inv.equipMod().shiftFrameBonus; P.inSeam = true;
     let dx = (E.keys.right?1:0)-(E.keys.left?1:0), dy = (E.keys.down?1:0)-(E.keys.up?1:0);
     if (dx===0 && dy===0){ dx = P.dir.x; dy = P.dir.y; }
     const m = Math.hypot(dx,dy)||1; dx/=m; dy/=m;
@@ -138,10 +155,15 @@ Hazama.Battle = (function(){
     if (!foe || foe.state !== 'wobble') { E.banner('まだ','HPを削り 揺らがせてから',800); return; }
     const d = Math.hypot(foe.x-P.x, foe.y-P.y);
     if (d > P.r + foe.r + 10){ E.banner('遠い','揺らぎの相手に 密着して',800); return; }
+    if (party.front.length + party.reserve.length >= 6){
+      E.banner('満員','これ以上 あわいものは 連れて歩けない',900); return;
+    }
     const base = B.anchorBaseChance + St.kiwa*B.anchorKiwaFactor + (foe.wob/300)*B.anchorWobbleFactor;
     if (Math.random() < base){
-      const newAlly = { ex:foe.x, ey:foe.y, edir:{x:-1,y:0}, hp:80, maxhp:80, name:foe.name, atkCD:0 };
-      ally = newAlly; foe = null;
+      const newAlly = { id:'ally'+(++allySeq), ex:foe.x, ey:foe.y, edir:{x:-1,y:0},
+        hp:80, maxhp:80, name:foe.name, atkCD:0, sprite:foe.sprite||'foeCat' };
+      if (party.front.length < 3) party.front.push(newAlly); else party.reserve.push(newAlly);
+      foe = null;
       E.banner('定着 成功', newAlly.name + ' が 仲間になった', 1800);
       if (onCaptured) onCaptured(newAlly);
     } else {
@@ -205,7 +227,7 @@ Hazama.Battle = (function(){
         foe.x+=foe.vx; foe.y+=foe.vy; foe.lungeT--; clampFoe();
         if (Math.hypot(foe.x-P.x, foe.y-P.y) < P.r+foe.r){
           if (P.iFrames>0){} else {
-            const dmg = 8+Math.random()*5|0; P.hp-=dmg; flash('#d0596b');
+            const dmg = Math.round((8+Math.random()*5|0) * (1-Inv.equipMod().dmgReduction)); P.hp-=dmg; flash('#d0596b');
             const dx=P.x-foe.x, dy=P.y-foe.y, m=Math.hypot(dx,dy)||1; P.x+=dx/m*10; P.y+=dy/m*10;
             E.banner('被弾','−'+dmg,500); foe.lungeT=0;
             if (P.hp<=0 && onLose) onLose();
@@ -214,11 +236,13 @@ Hazama.Battle = (function(){
       }
       foeAI();
     }
-    if (ally && foe && foe.state!=='wobble'){
-      const dx=foe.x-ally.ex, dy=foe.y-ally.ey, d=Math.hypot(dx,dy)||1;
-      ally.edir = {x:dx/d,y:dy/d};
-      if (d>44){ ally.ex+=dx/d*2.0; ally.ey+=dy/d*2.0; }
-      else { ally.atkCD--; if (ally.atkCD<=0){ ally.atkCD=55; foe.hp-=6+Math.random()*3|0; checkWobble(); updateBars(); } }
+    if (foe && foe.state!=='wobble'){
+      party.front.forEach(a => {
+        const dx=foe.x-a.ex, dy=foe.y-a.ey, d=Math.hypot(dx,dy)||1;
+        a.edir = {x:dx/d,y:dy/d};
+        if (d>44){ a.ex+=dx/d*2.0; a.ey+=dy/d*2.0; }
+        else { a.atkCD--; if (a.atkCD<=0){ a.atkCD=55; foe.hp-=6+Math.random()*3|0; checkWobble(); updateBars(); } }
+      });
     }
     if (proj){
       proj.x+=proj.dx; proj.y+=proj.dy; proj.life--;
@@ -275,12 +299,11 @@ Hazama.Battle = (function(){
     E.drawSprite('person', 'player-'+P.charId, P.x, P.y, 4, pal);
     ctx.restore();
   }
-  function drawAllySprite(){
-    if (!ally) return;
-    E.shadow(ally.ex, ally.ey);
-    E.drawSprite('person', 'ally', ally.ex, ally.ey, 4, {body:'#245a52',face:'#c8b98a',hair:'#123330'});
+  function drawAllySprite(a){
+    E.shadow(a.ex, a.ey);
+    E.drawSprite('person', 'ally-'+a.id, a.ex, a.ey, 4, {body:'#245a52',face:'#c8b98a',hair:'#123330'});
     ctx.fillStyle = '#7fd1c1'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
-    ctx.fillText(ally.name, ally.ex, ally.ey-86);
+    ctx.fillText(a.name, a.ex, a.ey-86);
   }
 
   function draw(){
@@ -295,7 +318,7 @@ Hazama.Battle = (function(){
     ctx.closePath(); ctx.fill(); ctx.restore();
 
     const list = [{y:P.y, fn:drawPlayerSprite}];
-    if (ally) list.push({y:ally.ey, fn:drawAllySprite});
+    party.front.forEach(a => list.push({y:a.ey, fn:()=>drawAllySprite(a)}));
     if (foe) list.push({y:foe.y, fn:()=>drawFoeSprite(foe)});
     E.drawYSorted(list);
     drawProj(); drawExplosions();
@@ -303,6 +326,6 @@ Hazama.Battle = (function(){
   }
 
   return { start, update, draw, attack, skill, useItem, shift, anchor,
-    get foe(){ return foe; }, get ally(){ return ally; }, set ally(v){ ally=v; },
+    get foe(){ return foe; }, party,
     bindShared };
 })();

@@ -14,19 +14,32 @@ Hazama.Explore = (function(){
   const D = Hazama.Data;
   const ctx = E.ctx;
 
-  let P, St, onEnterBattle, onEnterStation;
+  let P, St, onEnterBattle, onEnterStation, onEnterInterior;
   const state = {
     worldW: 0, worldH: 0, camera: {x:0,y:0},
     blocks: [], stationBlock: null, parkBlock: null,
     buildings: [], sparkles: [], decor: [],
     stationGate: {x:0,y:0,r:46}, enteringStation: false,
+    vending: null, enteringShop: false, lastTriggerPos: null,
     cat: {x:0,y:0,vx:0,vy:0,timer:0,say:0},
     yodomi: {x:0,y:0,r:26,active:true,glow:1},
     dust: [],
   };
 
-  function bindShared(sharedP, sharedSt, enterBattleFn, enterStationFn){
+  function bindShared(sharedP, sharedSt, enterBattleFn, enterStationFn, enterInteriorFn){
     P = sharedP; St = sharedSt; onEnterBattle = enterBattleFn; onEnterStation = enterStationFn;
+    onEnterInterior = enterInteriorFn;
+  }
+  // 店舗・自販機・自宅の中へ入った際、戻ってきた瞬間にまた同じ判定に触れて即再突入しないよう、
+  // 入店時のトリガー座標から少し離れた位置へプレイヤーを押し出す。
+  function releaseFromTrigger(){
+    state.enteringShop = false;
+    const t = state.lastTriggerPos; if (!t) return;
+    let dx = P.x-t.x, dy = P.y-t.y, d = Math.hypot(dx,dy);
+    if (d < 1){ dx = -P.dir.x; dy = -P.dir.y; d = Math.hypot(dx,dy) || 1; if (d < 1){ dx=0; dy=1; d=1; } }
+    const pushR = 70;
+    P.x = t.x + dx/d*pushR; P.y = t.y + dy/d*pushR;
+    state.lastTriggerPos = null;
   }
 
   // ==== ドット絵プロップ ==============================================
@@ -218,9 +231,22 @@ Hazama.Explore = (function(){
 
     const station = D.stations[stationId];
     const shops = (station && station.shops) || [];
+
+    // 既存の食事処に加え、コンビニ・際屋・際くじ屋台（食事処のある町のみ）と主人公の自宅（該当駅のみ）を
+    // 合成のショップ扱いで追加する。建物配置・看板描画は既存の食事処と同じパイプラインに乗せる。
+    const extraShops = [];
+    if (shops.length){
+      extraShops.push({ id: stationId+'#konbini', name:'コンビニ', bg:'#2e5e4a', catalogKey:'konbini' });
+      if (rand() < 0.45) extraShops.push({ id: stationId+'#kiwaya', name:'際屋', bg:'#5a2e3a', catalogKey:'kiwaya' });
+      if (rand() < 0.3) extraShops.push({ id: stationId+'#kiwakuji', name:'際くじ屋台', bg:'#7a5a2e', catalogKey:'kiwakuji' });
+    }
+    const home = Object.values(D.homes).find(h => h.stationId === stationId);
+    if (home) extraShops.push({ id:'home:'+home.charId, name:home.name, bg:'#3a2e5e', catalogKey:'home', homeCharId:home.charId });
+    const allShops = shops.concat(extraShops);
+
     const buildings = [];
     const perBlockCount = new Map();
-    shops.forEach((shop, i) => {
+    allShops.forEach((shop, i) => {
       const block = shopBlocks[i % shopBlocks.length];
       const key = block.c+'_'+block.r;
       const idx = perBlockCount.get(key) || 0;
@@ -264,8 +290,11 @@ Hazama.Explore = (function(){
     const yodomiBlock = parkBlock || shopBlocks[shopBlocks.length-1] || stationBlock;
     const yodomiPos = { x: yodomiBlock.cx, y: yodomiBlock.cy };
     const stationGate = { x: stationBlock.x0 + stationBlock.w*0.5, y: stationBlock.y0 + stationBlock.h*0.58, r: 50 };
+    // 自販機は「無人の終着駅にも1台だけある」設定（data.js の段畑の注記）に合わせ、
+    // 店舗の有無に関わらずどの駅にも改札のすぐそばへ1台だけ置く。
+    const vending = { x: stationGate.x - 90, y: stationGate.y - 16, r: 36 };
 
-    return { worldW:grid.w, worldH:grid.h, blocks, stationBlock, parkBlock, buildings, decor, yodomiPos, stationGate };
+    return { worldW:grid.w, worldH:grid.h, blocks, stationBlock, parkBlock, buildings, decor, yodomiPos, stationGate, vending };
   }
 
   // stationId は呼び出し側（main.js）が指定する。ここではデフォルト駅を決め打ちしない。
@@ -273,6 +302,8 @@ Hazama.Explore = (function(){
   // 駅構内から出た時も、電車で到着した時も、同じ場所から街に入る）。
   function init(stationId, spawn){
     state.enteringStation = false;
+    state.enteringShop = false;
+    state.lastTriggerPos = null;
     const station = D.stations[stationId] || null;
     state.stationId = stationId;
     state.station = station;
@@ -282,7 +313,7 @@ Hazama.Explore = (function(){
     state.worldW = town.worldW; state.worldH = town.worldH;
     state.blocks = town.blocks; state.stationBlock = town.stationBlock; state.parkBlock = town.parkBlock;
     state.buildings = town.buildings; state.decor = town.decor;
-    state.stationGate = town.stationGate;
+    state.stationGate = town.stationGate; state.vending = town.vending;
     state.yodomi = { x: town.yodomiPos.x, y: town.yodomiPos.y, r:26, active:true, glow:1 };
 
     if (spawn){ P.x = spawn.x; P.y = spawn.y; }
@@ -320,14 +351,15 @@ Hazama.Explore = (function(){
     P.x = Math.max(20, Math.min(state.worldW-20, P.x)); P.y = Math.max(20, Math.min(state.worldH-20, P.y));
     updateCamera();
 
-    const ally = Hazama.Battle.ally;
-    if (ally){
-      const tx = P.x - P.dir.x*30, ty = P.y - P.dir.y*30 + 8;
-      const adx = tx-ally.ex, ady = ty-ally.ey, ad = Math.hypot(adx,ady)||1;
+    // 前衛メンバーは主人公の後ろへ千鳥がけに並んで付いてくる（控えは街には出てこない）。
+    Hazama.Battle.party.front.forEach((a, i) => {
+      const back = 30 + i*26, lateral = (i%2===0 ? -1:1) * Math.ceil(i/2) * 16;
+      const tx = P.x - P.dir.x*back - P.dir.y*lateral, ty = P.y - P.dir.y*back + P.dir.x*lateral + 8;
+      const adx = tx-a.ex, ady = ty-a.ey, ad = Math.hypot(adx,ady)||1;
       const allySpd = ad>4 ? Math.min(ad, 3.6*(E.keys.run?D.balance.dashMultiplier:1)) : 0;
-      if (ad>4){ ally.ex += adx/ad*allySpd; ally.ey += ady/ad*allySpd; }
-      ally.edir = { x:adx/ad, y:ady/ad };
-    }
+      if (ad>4){ a.ex += adx/ad*allySpd; a.ey += ady/ad*allySpd; }
+      a.edir = { x:adx/ad, y:ady/ad };
+    });
 
     const cat = state.cat;
     cat.timer--;
@@ -356,11 +388,66 @@ Hazama.Explore = (function(){
       }
     }
 
-    if (!state.enteringStation && Math.hypot(P.x-state.stationGate.x, P.y-state.stationGate.y) < state.stationGate.r){
+    if (!state.enteringStation && !state.enteringShop &&
+        Math.hypot(P.x-state.stationGate.x, P.y-state.stationGate.y) < state.stationGate.r){
       state.enteringStation = true;
       E.banner('駅構内へ','改札を抜ける', 700);
       E.fadeThen(() => { if (onEnterStation) onEnterStation(state.stationId); }, 420);
     }
+
+    if (!state.enteringStation && !state.enteringShop){
+      const hitBuilding = state.buildings.find(b => Math.hypot(P.x-b.x, P.y-b.y) < 42);
+      if (hitBuilding){
+        state.enteringShop = true;
+        E.banner(hitBuilding.shop.name, '入る', 500);
+        E.fadeThen(() => { triggerShopEntry(hitBuilding); }, 380);
+      } else if (state.vending && Math.hypot(P.x-state.vending.x, P.y-state.vending.y) < state.vending.r){
+        state.enteringShop = true;
+        E.banner('自販機', '利用する', 500);
+        E.fadeThen(() => { triggerVendingEntry(); }, 380);
+      }
+    }
+  }
+
+  const NPC_PALETTES = [
+    {body:'#4a3a2e',face:'#d8b98a',hair:'#2a1f18'}, {body:'#3a4a5e',face:'#e0c49a',hair:'#1a2530'},
+    {body:'#5a3a4a',face:'#d8b98a',hair:'#2a1a24'}, {body:'#3a5a3e',face:'#dcc09a',hair:'#1c2e1e'},
+  ];
+  function pickNpcPalette(seed){ return NPC_PALETTES[hashStr(seed) % NPC_PALETTES.length]; }
+  function pickFlavor(pool){ return (pool && pool.length) ? pool[Math.floor(Math.random()*pool.length)] : ''; }
+
+  // ショップの建物（食事処／コンビニ／際屋／自宅）に触れた時、種類ごとに Interior.enter() 用の
+  // 設定を組み立てて main.js 経由で渡す。食事処は既存の shop.menu をそのまま買い物カタログに使う。
+  function triggerShopEntry(b){
+    state.lastTriggerPos = { x:b.x, y:b.y };
+    const shop = b.shop;
+    if (shop.catalogKey === 'home'){
+      onEnterInterior({ kind:'home', title:shop.name, stationId:state.stationId,
+        greeting:'ただいま……', npcId:shop.id });
+      return;
+    }
+    if (shop.catalogKey === 'konbini' || shop.catalogKey === 'kiwaya'){
+      const cat = D.shopCatalogs[shop.catalogKey];
+      onEnterInterior({ kind:'shop', mode:'buy', title:cat.name, stationId:state.stationId,
+        catalog: cat.items, npcId:shop.id, npcName:'店員', npcPalette:pickNpcPalette(shop.id),
+        greeting: pickFlavor(D.npcFlavor[shop.catalogKey]) });
+      return;
+    }
+    if (shop.catalogKey === 'kiwakuji'){
+      const cat = D.shopCatalogs.kiwakuji;
+      onEnterInterior({ kind:'lottery', title:cat.name, stationId:state.stationId, cost:cat.cost,
+        catalog: cat.items, npcId:shop.id, npcName:'屋台の主', npcPalette:pickNpcPalette(shop.id),
+        greeting: pickFlavor(D.npcFlavor.kiwakuji) });
+      return;
+    }
+    onEnterInterior({ kind:'shop', mode:'buy', title:shop.name, stationId:state.stationId,
+      catalog: shop.menu, npcId:shop.id, npcName:'店主', npcPalette:pickNpcPalette(shop.id),
+      greeting: pickFlavor(D.npcFlavor.food) });
+  }
+  function triggerVendingEntry(){
+    state.lastTriggerPos = { x:state.vending.x, y:state.vending.y };
+    onEnterInterior({ kind:'vending', mode:'buy', title:'自販機', stationId:state.stationId,
+      catalog: D.shopCatalogs.vending.items, greeting:'（無人の自販機だ）' });
   }
 
   // 壁・屋根・窓・ドアはドット絵プロップ（shopA〜D、店舗IDから決定的に選択）。
@@ -454,11 +541,18 @@ Hazama.Explore = (function(){
   }
   function drawAllySprite(ally){
     E.shadow(ally.ex, ally.ey);
-    E.drawSprite('person', 'ally', ally.ex, ally.ey, 4, {body:'#245a52',face:'#c8b98a',hair:'#123330'});
+    E.drawSprite('person', 'ally-'+ally.id, ally.ex, ally.ey, 4, {body:'#245a52',face:'#c8b98a',hair:'#123330'});
     if (ally.name){
       ctx.fillStyle = '#7fd1c1'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
       ctx.fillText(ally.name, ally.ex, ally.ey-86);
     }
+  }
+
+  function drawVending(){
+    const v = state.vending; if (!v) return;
+    E.drawSprite('shopD', state.stationId+'#vending', v.x, v.y, 3.6, { accent:'#2e4a5e' });
+    ctx.fillStyle = '#9aa7c7'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('自販機', v.x, v.y - 22*3.6 - 6);
   }
 
   function draw(){
@@ -469,17 +563,17 @@ Hazama.Explore = (function(){
     drawTownBase();
     state.decor.forEach(drawDecorItem);
     state.buildings.forEach(drawShop);
+    drawVending();
     drawStationGate();
     state.sparkles.forEach(drawSparkle);
     drawYodomi();
 
-    const ally = Hazama.Battle.ally;
     const list = [{y:P.y, fn:drawPlayerSprite}, {y:state.cat.y, fn:drawCat}];
-    if (ally) list.push({y:ally.ey, fn:()=>drawAllySprite(ally)});
+    Hazama.Battle.party.front.forEach(a => list.push({y:a.ey, fn:()=>drawAllySprite(a)}));
     E.drawYSorted(list);
     drawDust();
     ctx.restore();
   }
 
-  return { init, update, draw, bindShared, state };
+  return { init, update, draw, bindShared, state, releaseFromTrigger };
 })();

@@ -12,6 +12,7 @@
     <div class="top">
       <span>ハザマウォッチ <span class="dot">◈</span> 本編ビルド</span>
       <span class="topRight">
+        <button class="diaryBtn" id="itemsBtn" style="display:none">もちもの</button>
         <button class="diaryBtn" id="diaryBtn" style="display:none">日記</button>
         <span id="clock">17:42</span>
       </span>
@@ -42,7 +43,9 @@
         <div class="meter"><div class="lab">主人公 HP</div><div class="bar hp"><i id="phpBar" style="width:100%"></i></div></div>
         <div class="meter"><div class="lab">際力</div><div class="bar kw"><i id="kwBar" style="width:50%"></i></div></div>
         <div class="meter"><div class="lab" id="foeLab">あわいもの HP</div><div class="bar hp"><i id="fhpBar" style="width:100%"></i></div></div>
-        <div class="meter" id="allyMeter" style="display:none"><div class="lab" id="allyLab">仲間 HP</div><div class="bar al"><i id="allyBar" style="width:100%"></i></div></div>
+        <div class="meter" id="allyMeter0" style="display:none"><div class="lab" id="allyLab0">仲間 HP</div><div class="bar al"><i id="allyBar0" style="width:100%"></i></div></div>
+        <div class="meter" id="allyMeter1" style="display:none"><div class="lab" id="allyLab1">仲間 HP</div><div class="bar al"><i id="allyBar1" style="width:100%"></i></div></div>
+        <div class="meter" id="allyMeter2" style="display:none"><div class="lab" id="allyLab2">仲間 HP</div><div class="bar al"><i id="allyBar2" style="width:100%"></i></div></div>
       </div>
       <div class="encur" id="enCur">縁 0</div>
       <div class="banner" id="banner"><div class="big" id="bBig"></div><div class="sub" id="bSub"></div></div>
@@ -67,6 +70,24 @@
           <canvas id="routeMapCv" width="700" height="240"></canvas>
         </div>
       </div>
+
+      <div class="interiorPanel" id="interiorPanel" style="display:none">
+        <div class="stationInfoBar">
+          <span id="interiorTitle">店舗</span>
+          <button id="interiorExitBtn">出る ▸</button>
+        </div>
+        <div id="interiorNpcLine" class="interiorNpcLine"></div>
+        <div id="interiorBody" class="interiorBody"></div>
+      </div>
+
+      <div class="introDialogue" id="introDialogue" style="display:none">
+        <div class="introBox">
+          <div class="introSpeaker" id="introSpeaker"></div>
+          <div class="introText" id="introText"></div>
+          <div class="introHint">クリック / Enterで次へ ▸</div>
+        </div>
+      </div>
+
       <div id="touch">
         <div id="stick"><div id="nub"></div></div>
         <div class="tbtns" id="exploreBtns" style="grid-template-columns:50px">
@@ -87,16 +108,24 @@
       <div class="diaryHead">日記<button id="diaryCloseBtn">×</button></div>
       <div class="diarySlots" id="diarySlots"></div>
     </div>
+
+    <div class="diary" id="itemsPanel" style="display:none">
+      <div class="diaryHead">もちもの<button id="itemsCloseBtn">×</button></div>
+      <div class="ixTabs" id="itemsTabs"></div>
+      <div class="ixList" id="itemsList"></div>
+    </div>
   </div>
 </div>
 
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
 <script src="js/save.js"></script>
+<script src="js/inventory.js"></script>
 <script src="js/battle.js"></script>
 <script src="js/explore.js"></script>
 <script src="js/station.js"></script>
 <script src="js/train.js"></script>
+<script src="js/interior.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
