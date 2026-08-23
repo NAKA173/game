@@ -13,9 +13,18 @@
   const St = { t:0, gt:17*60+42, kiwa:50, slowmo:1, en:0 };
 
   let MODE = 'explore';
+  const DEFAULT_STATION = 'honmachi';
 
   Battle.bindShared(P, St);
   Explore.bindShared(P, St, enterBattle);
+
+  // デバッグ／動作確認用：URL の ?station=shotengaimae のような形で開始駅を切り替えられる。
+  // data.js の駅データさえあれば、本町以外の駅もこの入口からそのまま歩ける。
+  function resolveStartStation(){
+    const q = new URLSearchParams(location.search).get('station');
+    if (q && Hazama.Data.stations[q]) return q;
+    return DEFAULT_STATION;
+  }
 
   function clockTxt(){
     const m = Math.floor(St.gt) % 1440;
@@ -59,9 +68,11 @@
     document.getElementById('wrap').style.display = 'block';
     document.getElementById('touch').classList.add('on');
     E.resize();
-    Explore.init('honmachi');
+    const stationId = resolveStartStation();
+    Explore.init(stationId);
     document.getElementById('enCur').textContent = '縁 0';
-    E.banner('本町','街の奥に ヨドミの気配', 1200);
+    const station = Hazama.Data.stations[stationId];
+    E.banner(station.name || '？？？','街の奥に ヨドミの気配', 1200);
     clockTxt();
     requestAnimationFrame(loop);
   }

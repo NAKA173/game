@@ -23,26 +23,29 @@ Hazama.Explore = (function(){
   }
 
   // 駅データから店舗インスタンスを組み立てる（データ駆動の要）
+  // 店舗数が0〜N軒のどの駅データを渡しても、同じロジックでジグザグ配置のマップを組み立てる。
+  // 特定の駅名・店舗IDには一切依存しない（本町専用のハードコードはここには置かない）。
   function buildFromStation(stationId){
     const station = D.stations[stationId];
     state.buildings = [];
-    if (!station) return;
-    let idx = 0;
+    state.stationId = stationId;
+    state.station = station || null;
+    if (!station || !station.shops) return;
     station.shops.forEach((shop, i) => {
       const row = Math.floor(i / 2);
       const side = i % 2 === 0 ? 0.14 : 0.86;
       const y = E.H * 0.30 + row * 46;
       state.buildings.push({
         x: E.W * side, y, w: 150, h: 70, shop,
-        wall: wallColors[idx % wallColors.length], roof:'#2a2540', roofDark:'#1c1830',
+        wall: wallColors[i % wallColors.length], roof:'#2a2540', roofDark:'#1c1830',
       });
-      idx++;
     });
   }
 
+  // stationId は呼び出し側（main.js）が指定する。ここではデフォルト駅を決め打ちしない。
   function init(stationId){
     P.x = E.W*0.5; P.y = E.H*0.86; P.hp = P.maxhp;
-    buildFromStation(stationId || 'honmachi');
+    buildFromStation(stationId);
     state.sparkles = [];
     for (let i=0;i<6;i++){
       state.sparkles.push({ x: E.W*(0.3+Math.random()*0.4), y: E.H*(0.35+Math.random()*0.4), got:false, ph:Math.random()*6 });
