@@ -468,7 +468,8 @@ Hazama.Explore = (function(){
   }
   function drawPlayerSprite(){
     E.shadow(P.x, P.y);
-    E.drawSprite('person', 'player', P.x, P.y, 4, {body:'#2a2540',face:'#d8b98a',hair:'#1a1730'});
+    const pal = (D.characters[P.charId] && D.characters[P.charId].palette) || D.characters.saku.palette;
+    E.drawSprite('person', 'player-'+P.charId, P.x, P.y, 4, pal);
   }
   function drawAllySprite(ally){
     E.shadow(ally.ex, ally.ey);

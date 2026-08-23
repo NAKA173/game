@@ -26,6 +26,12 @@ Hazama.Battle = (function(){
     });
   }
 
+  // 操作キャラクター（story_bible_v1.md §2.2）ごとの倍率。未選択・不明キャラは等倍で安全側に倒す。
+  function charMod(key){
+    const c = D.characters && P && D.characters[P.charId];
+    return (c && c.mods && c.mods[key]) || 1;
+  }
+
   // あわいもののドット絵プロップ。data.js の foes[kind].sprite で選ぶ（foeCat/foeSeal）。
   E.defprop('foeCat', 20, 16, (g, rng) => {
     const body = '#3d3560', bodyLit = E.shade(body,1.3), bodyLo = E.shade(body,0.75);
@@ -78,7 +84,7 @@ Hazama.Battle = (function(){
       let dmg = B.attackDamageMin + Math.random()*(B.attackDamageMax-B.attackDamageMin) | 0;
       if (foe.weak > 0){ dmg = Math.round(dmg*B.critMultiplier); foe.weak = 0;
         flash('#e8c86a'); E.banner('会心','弱点を突いた',600); }
-      foe.hp -= dmg; St.kiwa = Math.min(100, St.kiwa + B.kiwaRegenPerAttack);
+      foe.hp -= dmg; St.kiwa = Math.min(100, St.kiwa + B.kiwaRegenPerAttack*charMod('kiwaRegenMult'));
       foe.x += P.dir.x*4; foe.y += P.dir.y*4;
       checkWobble(); updateBars();
     }
@@ -115,7 +121,8 @@ Hazama.Battle = (function(){
   function shift(){
     if (P.shiftCD > 0) return;
     if (St.kiwa < B.shiftCost){ E.banner('際力不足','際シフトには際力'+B.shiftCost+'以上',700); return; }
-    St.kiwa -= B.shiftCost; P.shiftCD = B.shiftCooldown; P.iFrames = B.iFrames; P.inSeam = true;
+    St.kiwa -= B.shiftCost; P.shiftCD = Math.round(B.shiftCooldown*charMod('shiftCooldownMult'));
+    P.iFrames = B.iFrames; P.inSeam = true;
     let dx = (E.keys.right?1:0)-(E.keys.left?1:0), dy = (E.keys.down?1:0)-(E.keys.up?1:0);
     if (dx===0 && dy===0){ dx = P.dir.x; dy = P.dir.y; }
     const m = Math.hypot(dx,dy)||1; dx/=m; dy/=m;
@@ -221,7 +228,7 @@ Hazama.Battle = (function(){
       if (hit){ explode(proj.x, proj.y); proj=null; }
     }
     explosions.forEach(e=>e.life--); explosions = explosions.filter(e=>e.life>0);
-    if (St.t % B.kiwaRegenIdleInterval === 0) St.kiwa = Math.min(100, St.kiwa+1);
+    if (St.t % B.kiwaRegenIdleInterval === 0) St.kiwa = Math.min(100, St.kiwa+1*charMod('kiwaRegenMult'));
   }
 
   let flashCol=null, flashT=0;
@@ -264,7 +271,8 @@ Hazama.Battle = (function(){
       ctx.fillStyle = 'rgba(232,200,106,'+(P.atkAnim/10*0.4)+')';
       ctx.beginPath(); ctx.arc(P.x+P.dir.x*24, P.y+P.dir.y*24-8, 17, 0, Math.PI*2); ctx.fill();
     }
-    E.drawSprite('person', 'player', P.x, P.y, 4, {body:'#2a2540',face:'#d8b98a',hair:'#1a1730'});
+    const pal = (D.characters[P.charId] && D.characters[P.charId].palette) || D.characters.saku.palette;
+    E.drawSprite('person', 'player-'+P.charId, P.x, P.y, 4, pal);
     ctx.restore();
   }
   function drawAllySprite(){

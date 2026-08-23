@@ -3,27 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ハザマ ─ 本編プロジェクト（本町エリア）</title>
+<title>ハザマ ─ 本編プロジェクト</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="app">
   <div class="frame">
     <div class="top">
-      <span>ハザマウォッチ <span class="dot">◈</span> 本編ビルド（本町）</span>
-      <span id="clock">17:42</span>
+      <span>ハザマウォッチ <span class="dot">◈</span> 本編ビルド</span>
+      <span class="topRight">
+        <button class="diaryBtn" id="diaryBtn" style="display:none">日記</button>
+        <span id="clock">17:42</span>
+      </span>
     </div>
 
     <div id="introPane" class="intro">
-      <h1>ハザマ <span>─ 本編プロジェクト 第一歩</span></h1>
-      <p>ファイルを分割し、本町エリアの店舗データを <em>data.js</em> から読み込むデータ駆動構成にしました。
-      遠近圧縮は廃止し、等倍表示＋Yソートのみで奥行きを作っています。</p>
+      <h1>ハザマ <span>─ 本編プロジェクト</span></h1>
+      <p>境目線26駅ぶんの店舗データを <em>data.js</em> から読み込むデータ駆動構成。
+      各駅は道が折れ線で分岐する回遊マップとして自動生成され、電車で隣駅・隣路線へ移動できます。</p>
       <div class="keys">
-        <b>WASD / 矢印</b> 移動<br>
-        探索中：ヨドミに近づくだけで戦闘開始<br>
+        <b>WASD / 矢印</b> 移動　<b>Shift</b> ダッシュ<br>
+        探索中：ヨドミに近づくだけで戦闘開始／道の先の乗り場から隣駅へ<br>
         戦闘中：<b>J</b>こうげき　<b>U</b>際弾　<b>K</b>際シフト　<b>I</b>なごり水　<b>L</b>定着
       </div>
-      <button class="startbtn" onclick="Hazama.start()">際に踏み込む ▸</button>
+      <button class="startbtn" id="newGameBtn">際に踏み込む ▸</button>
+      <button class="startbtn ghost" id="continueBtn" style="display:none">日記から続ける</button>
+    </div>
+
+    <div id="charSelect" class="intro" style="display:none">
+      <h1>ハザマ <span>─ 操作キャラクターを選ぶ</span></h1>
+      <div id="charList" class="charList"></div>
     </div>
 
     <div id="wrap" style="display:none">
@@ -52,11 +61,17 @@
       </div>
     </div>
     <div class="foot" id="foot">WASD 移動 ／ ヨドミに近づくと戦闘開始</div>
+
+    <div class="diary" id="diaryPanel" style="display:none">
+      <div class="diaryHead">日記<button id="diaryCloseBtn">×</button></div>
+      <div class="diarySlots" id="diarySlots"></div>
+    </div>
   </div>
 </div>
 
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
+<script src="js/save.js"></script>
 <script src="js/battle.js"></script>
 <script src="js/explore.js"></script>
 <script src="js/main.js"></script>
