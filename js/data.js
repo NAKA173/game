@@ -183,10 +183,10 @@ Hazama.Data = {
   foes: {
     yodomineko: {
       name: 'よどみネコ', r:16, hp:100, maxhp:100, atkCD:150, atkSpd:1.1,
-      attribute:'状態の際', wobbleThreshold:0.30,
+      attribute:'状態の際', wobbleThreshold:0.30, sprite:'foeCat',
     },
     tasogareazarashi: {
-      name: 'たそがれあざらし', r:18, hp:150, maxhp:150, atkCD:110, atkSpd:1.4,
+      name: 'たそがれあざらし', r:18, hp:150, maxhp:150, atkCD:110, atkSpd:1.4, sprite:'foeSeal',
       attribute:'場所の際', wobbleThreshold:0.30,
     },
   },
@@ -198,7 +198,7 @@ Hazama.Data = {
 
   // 際力・こうげき等のバランス定数（企画書の数値をそのまま定数化）
   balance: {
-    playerSpd: 2.6,
+    playerSpd: 2.6, dashMultiplier: 1.85,
     attackDamageMin: 9, attackDamageMax: 13,
     critMultiplier: 2.4,
     shiftCost: 14, shiftCooldown: 42, iFrames: 16,

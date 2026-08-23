@@ -34,16 +34,18 @@
 
   function enterBattle(){
     MODE = 'battle';
+    document.getElementById('exploreBtns').style.display = 'none';
     Battle.start('yodomineko');
   }
   function exitBattleToExplore(){
     MODE = 'explore';
     document.getElementById('battleHud').style.display = 'none';
     document.getElementById('battleBtns').style.display = 'none';
+    document.getElementById('exploreBtns').style.display = 'grid';
     document.getElementById('allyMeter').style.display = 'none';
-    document.getElementById('foot').innerHTML = Battle.ally
-      ? 'WASD 移動 ／ 仲間が街にもついてくる' : 'WASD 移動 ／ ヨドミに近づくと戦闘開始';
-    P.x = E.W*0.5; P.y = E.H*0.30;
+    document.getElementById('foot').innerHTML = (Battle.ally
+      ? 'WASD 移動 ／ 仲間が街にもついてくる' : 'WASD 移動 ／ ヨドミに近づくと戦闘開始') + ' ／ Shift ダッシュ';
+    P.x = Explore.state.worldW*0.5; P.y = Explore.state.worldH*0.30;
     if (Battle.ally){ Battle.ally.ex = P.x-30; Battle.ally.ey = P.y+10; }
   }
 
@@ -58,8 +60,9 @@
       P.hp = P.maxhp; MODE = 'explore';
       document.getElementById('battleHud').style.display = 'none';
       document.getElementById('battleBtns').style.display = 'none';
-      document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始';
-      P.x = E.W*0.5; P.y = E.H*0.7;
+      document.getElementById('exploreBtns').style.display = 'grid';
+      document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始 ／ Shift ダッシュ';
+      P.x = Explore.state.worldW*0.5; P.y = Explore.state.worldH*0.7;
     }, 1500);
   }
 
@@ -103,6 +106,7 @@
   E.bindButton('tSkill', () => Battle.skill());
   E.bindButton('tItem', () => Battle.useItem());
   E.bindButton('tAnchor', onAnchorPress);
+  E.bindHold('tDash', () => { E.keys.run = true; }, () => { E.keys.run = false; });
   addEventListener('resize', () => E.resize());
 
   window.Hazama.start = start;

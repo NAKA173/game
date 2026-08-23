@@ -22,7 +22,7 @@ Hazama.Engine = (function(){
   const keys = {};
   const tv = { x: 0, y: 0 }; // タッチスティック入力
   const KEYMAP = { arrowup:'up',arrowdown:'down',arrowleft:'left',arrowright:'right',
-    w:'up', s:'down', a:'left', d:'right' };
+    w:'up', s:'down', a:'left', d:'right', shift:'run' };
 
   function bindKeyboard(onAction){
     addEventListener('keydown', e => {
@@ -67,6 +67,16 @@ Hazama.Engine = (function(){
     if (!el) return;
     el.addEventListener('touchstart', e => { fn(); e.preventDefault(); }, { passive:false });
     el.addEventListener('click', fn);
+  }
+  // 押している間だけ true/false を切り替えるボタン（ダッシュなど、単発でなく保持したいもの用）。
+  function bindHold(id, onDown, onUp){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('touchstart', e => { onDown(); e.preventDefault(); }, { passive:false });
+    el.addEventListener('touchend', e => { onUp(); e.preventDefault(); }, { passive:false });
+    el.addEventListener('mousedown', onDown);
+    el.addEventListener('mouseup', onUp);
+    el.addEventListener('mouseleave', onUp);
   }
 
   function readAxis(){
@@ -234,7 +244,7 @@ Hazama.Engine = (function(){
 
   return {
     ctx, get W(){return W;}, get H(){return H;}, get keys(){return keys;}, get tv(){return tv;},
-    resize, bindKeyboard, bindStick, bindButton, readAxis,
+    resize, bindKeyboard, bindStick, bindButton, bindHold, readAxis,
     banner, fadeThen, horizon, drawGround, shadow, drawPerson, drawYSorted,
     PAL, shade, makeRNG, hashStr, px, rc, speck, drip, defprop, drawSprite,
   };

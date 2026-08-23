@@ -22,9 +22,27 @@ Hazama.Battle = (function(){
   function makeFoe(kind){
     const base = D.foes[kind];
     return Object.assign({}, base, {
-      x: 0, y: 0, state:'normal', vx:0, vy:0, tele:0, weak:0, wob:0, fleeT:0, lungeT:0,
+      kind, x: 0, y: 0, state:'normal', vx:0, vy:0, tele:0, weak:0, wob:0, fleeT:0, lungeT:0,
     });
   }
+
+  // あわいもののドット絵プロップ。data.js の foes[kind].sprite で選ぶ（foeCat/foeSeal）。
+  E.defprop('foeCat', 20, 16, (g, rng) => {
+    const body = '#3d3560', bodyLit = E.shade(body,1.3), bodyLo = E.shade(body,0.75);
+    E.rc(g,2,5,16,10,body); E.rc(g,2,5,16,2,bodyLit); E.rc(g,2,13,16,2,bodyLo);
+    E.rc(g,3,0,4,6,body); E.rc(g,13,0,4,6,body);
+    E.rc(g,4,1,2,3,bodyLit); E.rc(g,14,1,2,3,bodyLit);
+    E.rc(g,6,8,3,2,'#e8c86a'); E.rc(g,12,8,3,2,'#e8c86a');
+    E.speck(g, rng, 2,5,16,10, bodyLo, 6);
+  });
+  E.defprop('foeSeal', 24, 18, (g, rng) => {
+    const body = '#3d3560', bodyLit = E.shade(body,1.3), bodyLo = E.shade(body,0.75);
+    E.rc(g,1,6,22,11,body); E.rc(g,1,6,22,2,bodyLit); E.rc(g,1,15,22,2,bodyLo);
+    E.rc(g,16,1,7,7,body); E.rc(g,17,2,4,3,bodyLit);
+    E.rc(g,9,10,3,2,'#e8c86a'); E.rc(g,14,10,3,2,'#e8c86a');
+    E.speck(g, rng, 1,6,22,11, bodyLo, 7);
+  });
+  const FOE_DIMS = { foeCat:{w:20,h:16,scale:3.4}, foeSeal:{w:24,h:18,scale:3.2} };
 
   function start(kind){
     foe = makeFoe(kind || 'yodomineko');
@@ -211,26 +229,21 @@ Hazama.Battle = (function(){
 
   function drawFoeSprite(f){
     const wob = f.state==='wobble'; const bob = Math.sin(St.t*0.06)*2;
+    const dim = FOE_DIMS[f.sprite] || FOE_DIMS.foeCat;
     E.shadow(f.x, f.y);
     ctx.save();
     if (wob) ctx.globalAlpha = 0.45+0.4*Math.abs(Math.sin(St.t*0.3));
     if (f.tele>0){ ctx.shadowColor='#d0596b'; ctx.shadowBlur=14; }
-    ctx.translate(f.x, f.y-14+bob*0.4);
-    ctx.fillStyle = wob ? '#9aa7c7' : '#3d3560';
-    ctx.beginPath(); ctx.ellipse(0,0,20,16,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-11,-8); ctx.lineTo(-17,-22); ctx.lineTo(-4,-12); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(11,-8); ctx.lineTo(17,-22); ctx.lineTo(4,-12); ctx.fill();
+    E.drawSprite(f.sprite || 'foeCat', f.kind, f.x, f.y+bob*0.4, dim.scale);
     ctx.shadowBlur=0;
-    ctx.fillStyle = f.weak>0 ? '#d0596b' : '#e8c86a';
-    ctx.fillRect(-8,-2,4,3); ctx.fillRect(4,-2,4,3);
     if (f.weak>0){
       ctx.strokeStyle='#d0596b'; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.arc(0,0,22+Math.sin(St.t*0.3)*2,0,Math.PI*2); ctx.stroke();
-      ctx.fillStyle='#d0596b'; ctx.font='10px monospace'; ctx.textAlign='center'; ctx.fillText('弱点',0,-30);
+      ctx.beginPath(); ctx.arc(f.x,f.y-dim.h*dim.scale*0.5,dim.h*dim.scale*0.55+Math.sin(St.t*0.3)*2,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='#d0596b'; ctx.font='10px monospace'; ctx.textAlign='center'; ctx.fillText('弱点',f.x,f.y-dim.h*dim.scale-14);
     }
-    if (f.tele>0){ ctx.fillStyle='#d0596b'; ctx.font='12px monospace'; ctx.textAlign='center'; ctx.fillText('▼',0,-34); }
+    if (f.tele>0){ ctx.fillStyle='#d0596b'; ctx.font='12px monospace'; ctx.textAlign='center'; ctx.fillText('▼',f.x,f.y-dim.h*dim.scale-18); }
     ctx.restore();
-    ctx.fillStyle='#9aa7c7'; ctx.font='9px monospace'; ctx.textAlign='center'; ctx.fillText(f.name, f.x, f.y-40);
+    ctx.fillStyle='#9aa7c7'; ctx.font='9px monospace'; ctx.textAlign='center'; ctx.fillText(f.name, f.x, f.y-dim.h*dim.scale-4);
   }
   function drawProj(){
     if (!proj) return;
@@ -251,14 +264,15 @@ Hazama.Battle = (function(){
       ctx.fillStyle = 'rgba(232,200,106,'+(P.atkAnim/10*0.4)+')';
       ctx.beginPath(); ctx.arc(P.x+P.dir.x*24, P.y+P.dir.y*24-8, 17, 0, Math.PI*2); ctx.fill();
     }
-    E.drawPerson(P.x, P.y, P.dir, {body:'#2a2540',face:'#d8b98a',hair:'#1a1730'});
+    E.drawSprite('person', 'player', P.x, P.y, 4, {body:'#2a2540',face:'#d8b98a',hair:'#1a1730'});
     ctx.restore();
   }
   function drawAllySprite(){
     if (!ally) return;
     E.shadow(ally.ex, ally.ey);
-    E.drawPerson(ally.ex, ally.ey, ally.edir||{x:0,y:1},
-      {body:'#245a52',face:'#c8b98a',hair:'#123330',label:'#7fd1c1'}, ally.name);
+    E.drawSprite('person', 'ally', ally.ex, ally.ey, 4, {body:'#245a52',face:'#c8b98a',hair:'#123330'});
+    ctx.fillStyle = '#7fd1c1'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(ally.name, ally.ex, ally.ey-86);
   }
 
   function draw(){
