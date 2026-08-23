@@ -15,6 +15,7 @@ Hazama.Explore = (function(){
   const state = {
     buildings: [], sparkles: [], cat: {x:0,y:0,vx:0,vy:0,timer:0,say:0},
     yodomi: {x:0,y:0,r:26,active:true,glow:1},
+    warps: [], traveling: false,
     dust: [],
   };
 
@@ -42,10 +43,31 @@ Hazama.Explore = (function(){
     });
   }
 
+  // 隣駅への乗り場（駅間移動の入口）を組み立てる。data.js の adjacentStations() が
+  // 返す隣駅を、路線に関わらず同じロジックでマップ端（左＝prev、右＝next）に配置する。
+  function buildWarps(stationId){
+    const adj = D.adjacentStations(stationId);
+    state.warps = [];
+    const bySide = { prev: [], next: [] };
+    adj.forEach(a => bySide[a.dir].push(a));
+    bySide.prev.forEach((a, i) => {
+      const st = D.stations[a.id];
+      state.warps.push({ ...a, name: (st && st.name) || '？？？', x: 40, y: E.H*0.56 + i*36, r: 22 });
+    });
+    bySide.next.forEach((a, i) => {
+      const st = D.stations[a.id];
+      state.warps.push({ ...a, name: (st && st.name) || '？？？', x: E.W-40, y: E.H*0.56 + i*36, r: 22 });
+    });
+  }
+
   // stationId は呼び出し側（main.js）が指定する。ここではデフォルト駅を決め打ちしない。
-  function init(stationId){
-    P.x = E.W*0.5; P.y = E.H*0.86; P.hp = P.maxhp;
+  // spawn を渡すと初期立ち位置を上書きできる（電車で隣駅から来た場合、逆側の乗り場に出す）。
+  function init(stationId, spawn){
+    state.traveling = false;
+    if (spawn){ P.x = spawn.x; P.y = spawn.y; } else { P.x = E.W*0.5; P.y = E.H*0.86; }
+    P.hp = P.maxhp;
     buildFromStation(stationId);
+    buildWarps(stationId);
     state.sparkles = [];
     for (let i=0;i<6;i++){
       state.sparkles.push({ x: E.W*(0.3+Math.random()*0.4), y: E.H*(0.35+Math.random()*0.4), got:false, ph:Math.random()*6 });
@@ -54,7 +76,20 @@ Hazama.Explore = (function(){
     state.yodomi = { x:E.W*0.5, y:E.H*0.20, r:26, active:true, glow:1 };
     document.getElementById('battleHud').style.display = 'none';
     document.getElementById('battleBtns').style.display = 'none';
-    document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始';
+    document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始 ／ 端の乗り場から隣駅へ';
+  }
+
+  // 隣駅への乗車演出。フェードで暗転→到着駅を組み立て直し、出発方向と逆側の乗り場に出す。
+  function travelTo(w){
+    state.traveling = true;
+    E.banner('乗車', w.lineName + ' ' + w.name + ' ゆき', 700);
+    E.fadeThen(() => {
+      // 到着直後に反対側の乗り場のトリガー半径(r:22)へ入り込んで即座に引き返してしまわないよう、
+      // 端からトリガー半径より十分離れた位置に降ろす。
+      const spawn = w.dir === 'next' ? { x: 90, y: E.H*0.56 } : { x: E.W-90, y: E.H*0.56 };
+      init(w.id, spawn);
+      E.banner(D.stations[w.id].name, '到着', 900);
+    }, 420);
   }
 
   function spawnDust(){
@@ -100,6 +135,11 @@ Hazama.Explore = (function(){
         E.banner('際が 濃くなる…','ヨドミに 引き込まれる',900);
         E.fadeThen(() => { if (onEnterBattle) onEnterBattle(); }, 420);
       }
+    }
+
+    if (!state.traveling){
+      const w = state.warps.find(w => Math.hypot(P.x-w.x, P.y-w.y) < w.r);
+      if (w) travelTo(w);
     }
   }
 
@@ -178,6 +218,19 @@ Hazama.Explore = (function(){
     ctx.fillStyle = '#9aa7c7'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
     ctx.fillText('ヨドミ', y.x, y.y-42);
   }
+  function drawWarp(w){
+    ctx.save(); ctx.translate(w.x, w.y);
+    ctx.fillStyle = '#2a2540'; ctx.fillRect(-16,-46,32,46);
+    ctx.fillStyle = '#7fd1c1'; ctx.fillRect(-16,-46,32,6);
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.strokeRect(-16,-46,32,46);
+    ctx.fillStyle = '#e9e6da'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(w.dir === 'next' ? '▶' : '◀', 0, -18);
+    ctx.fillStyle = '#9aa7c7'; ctx.font = '9px monospace';
+    ctx.fillText(w.lineName, 0, -56);
+    ctx.fillStyle = '#e9e6da'; ctx.font = 'bold 11px monospace';
+    ctx.fillText(w.name, 0, -68);
+    ctx.restore();
+  }
   function drawDust(){
     state.dust.forEach(d => { d.life--;
       ctx.save(); ctx.globalAlpha = Math.max(0, d.life/16*0.35);
@@ -205,6 +258,7 @@ Hazama.Explore = (function(){
     state.buildings.forEach(drawShop);
     state.sparkles.forEach(drawSparkle);
     drawYodomi();
+    state.warps.forEach(drawWarp);
 
     const ally = Hazama.Battle.ally;
     const list = [{y:P.y, fn:drawPlayerSprite}, {y:state.cat.y, fn:drawCat}];

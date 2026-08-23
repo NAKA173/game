@@ -141,6 +141,31 @@ Hazama.Data = {
     ]},
   },
 
+  // 路線ごとの駅の並び（駅間移動の隣接判定に使う）。環状線は循環、支線は末端で行き止まり。
+  // 現時点では環状線のみ実データ化。他の支線も同じ形式で並びを追加していける。
+  lines: {
+    kanjosen: { name:'環状線', loop:true, stations:[
+      'honmachi','futatsumori','shotengaimae','kamotsuekiato','oiwake',
+      'nakasu','hashiba','wasurezaka','miyanosakai','tsukino',
+    ]},
+  },
+
+  // 指定駅から電車で行ける隣駅（前後）を、駅が乗り入れている路線ごとに列挙する。
+  // 環状線のように loop:true な路線は末端でも反対側に循環してつながる。
+  adjacentStations(stationId){
+    const result = [];
+    Object.values(this.lines).forEach(line => {
+      const i = line.stations.indexOf(stationId);
+      if (i === -1) return;
+      const n = line.stations.length;
+      const prevOk = line.loop || i > 0;
+      const nextOk = line.loop || i < n - 1;
+      if (prevOk) result.push({ dir:'prev', lineName:line.name, id: line.stations[(i - 1 + n) % n] });
+      if (nextOk) result.push({ dir:'next', lineName:line.name, id: line.stations[(i + 1) % n] });
+    });
+    return result;
+  },
+
   // あわいもの（敵/仲間になり得る個体）の基礎ステータス
   foes: {
     yodomineko: {
