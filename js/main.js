@@ -7,6 +7,8 @@
   const D = Hazama.Data;
   const Battle = Hazama.Battle;
   const Explore = Hazama.Explore;
+  const Station = Hazama.Station;
+  const Train = Hazama.Train;
   const Save = Hazama.Save;
 
   const P = { x:0, y:0, r:13, hp:100, maxhp:100, dir:{x:1,y:0}, charId:'saku',
@@ -20,7 +22,9 @@
   const DEFAULT_STATION = 'honmachi';
 
   Battle.bindShared(P, St);
-  Explore.bindShared(P, St, enterBattle);
+  Explore.bindShared(P, St, enterBattle, enterStation);
+  Station.bindShared(P, St, boardTrain, exitStationToTown);
+  Train.bindShared(St, arriveAtStation);
 
   // デバッグ／動作確認用：URL の ?station=shotengaimae のような形で開始駅を切り替えられる。
   // data.js の駅データさえあれば、本町以外の駅もこの入口からそのまま歩ける（新規開始時のみ。
@@ -103,6 +107,27 @@
     }, 1500);
   }
 
+  // ==== 駅構内・電車遷移 ================================================
+  // 街（explore.js）と駅構内（station.js）は完全に別モード。改札に触れると街の状態を保ったまま
+  // 駅構内モードへ、「町へ戻る」で改札のすぐ外（毎回同じ場所）へ戻す。
+  function enterStation(stationId){
+    MODE = 'station';
+    Station.enter(stationId);
+  }
+  function exitStationToTown(stationId){
+    MODE = 'explore';
+    Explore.init(stationId);
+  }
+  function boardTrain(adjInfo, destName, express){
+    document.getElementById('stationPanel').style.display = 'none';
+    MODE = 'train';
+    Train.board(adjInfo, destName, express);
+  }
+  function arriveAtStation(stationId){
+    MODE = 'station';
+    Station.enter(stationId);
+  }
+
   // ==== 開始（新規 or ロード） ==========================================
   // loadData を渡すとセーブデータから再開する（駅・位置・縁・時刻・プレイ時間を復元）。
   // 新規開始時は resolveStartStation() のデフォルト駅から、縁0・初期時刻で始まる。
@@ -115,12 +140,14 @@
     document.getElementById('diaryBtn').style.display = 'inline-block';
     E.resize();
 
-    // ロード時にバトル画面から再開することは無いはずだが、念のため探索状態へ揃えておく。
+    // ロード時にバトル・駅構内・車内から再開することは無いはずだが、念のため探索状態へ揃えておく。
     MODE = 'explore';
     document.getElementById('battleHud').style.display = 'none';
     document.getElementById('battleBtns').style.display = 'none';
     document.getElementById('exploreBtns').style.display = 'grid';
     document.getElementById('allyMeter').style.display = 'none';
+    document.getElementById('stationPanel').style.display = 'none';
+    document.getElementById('trainPanel').style.display = 'none';
     Battle.ally = null;
 
     P.charId = charId;
@@ -227,15 +254,17 @@
   }
 
   // ==== メインループ ====================================================
+  const MODULES = { explore: Explore, battle: Battle, station: Station, train: Train };
   let acc = 0;
   function loop(){
     acc += St.slowmo;
     while (acc >= 1){
       St.t++; if (St.t % 2 === 0){ St.gt += 0.05; clockTxt(); }
-      if (MODE === 'explore') Explore.update(); else Battle.update(onPlayerLose);
+      if (MODE === 'battle') Battle.update(onPlayerLose);
+      else MODULES[MODE].update();
       acc--;
     }
-    if (MODE === 'explore') Explore.draw(); else Battle.draw();
+    MODULES[MODE].draw();
     requestAnimationFrame(loop);
   }
 

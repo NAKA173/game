@@ -1,8 +1,9 @@
 /*
  * explore.js
  * 街歩き（Yソート2D、遠近圧縮なし）。data.js の駅データから店舗を構築する。
- * 駅ごとに画面より大きい「ワールド」を持ち、カメラがプレイヤーを追従してスクロールする。
- * 道は折れ線（複数区間の直線）として生成し、店舗・ヨドミ・隣駅の乗り場はその道沿いに配置する。
+ * 駅は「街」と「駅構内（station.js）」を独立させた構造：ここで作るのは道路グリッド＋区画（ブロック）
+ * に建物を並べた街のみ。駅ブロックには改札のファサードだけを置き、近づくと駅構内シーンへ遷移する
+ * （実際の路線図・乗車券購入・電車移動は station.js / train.js が担当）。
  * 駅ごとの座標は stationId から作る疑似乱数で決めるため、同じ駅は毎回同じレイアウトになる。
  * ヨドミに近づくとバトルへ遷移する。
  */
@@ -13,32 +14,24 @@ Hazama.Explore = (function(){
   const D = Hazama.Data;
   const ctx = E.ctx;
 
-  let P, St, onEnterBattle;
+  let P, St, onEnterBattle, onEnterStation;
   const state = {
     worldW: 0, worldH: 0, camera: {x:0,y:0},
-    buildings: [], sparkles: [], decor: [], road: [],
+    blocks: [], stationBlock: null, parkBlock: null,
+    buildings: [], sparkles: [], decor: [],
+    stationGate: {x:0,y:0,r:46}, enteringStation: false,
     cat: {x:0,y:0,vx:0,vy:0,timer:0,say:0},
     yodomi: {x:0,y:0,r:26,active:true,glow:1},
-    warps: [], traveling: false,
     dust: [],
   };
 
-  function bindShared(sharedP, sharedSt, enterBattleFn){
-    P = sharedP; St = sharedSt; onEnterBattle = enterBattleFn;
+  function bindShared(sharedP, sharedSt, enterBattleFn, enterStationFn){
+    P = sharedP; St = sharedSt; onEnterBattle = enterBattleFn; onEnterStation = enterStationFn;
   }
 
-  // 駅の規模（data.js の station.type）ごとに、画面（ビューポート）の何倍のワールドを持つか。
-  // major は妖怪ウォッチの街1つ分くらいを目安に大きく、pass/special は簡素に小さめ。
-  const WORLD_SCALE = {
-    major:   { w:4.4, h:3.4 },
-    minor:   { w:2.8, h:2.3 },
-    special: { w:2.4, h:2.0 },
-    pass:    { w:1.8, h:1.6 },
-  };
-
   // ==== ドット絵プロップ ==============================================
-  // engine.js の低解像度プロップ・システムを使い、人物・店舗（4種）・木・生垣・
-  // 道の舗装テクスチャ・あわいもの（2種）をドット絵化する。
+  // engine.js の低解像度プロップ・システムを使い、人物・店舗（4種）・駅ファサード・木・生垣・
+  // 道路舗装テクスチャをドット絵化する。
 
   // 人物：10x20ドットの簡易チビキャラ。body/face/hair を差し替えれば主人公にも仲間にも使える。
   E.defprop('person', 10, 20, (g, rng, opts) => {
@@ -53,8 +46,7 @@ Hazama.Explore = (function(){
     E.px(g,3,4,E.shade(face,0.35)); E.px(g,6,4,E.shade(face,0.35));
   });
 
-  // 店舗A：24x34ドット。窓2つの標準型。壁の陰影・パネル継ぎ目・汚れ・窓の点灯差・雨だれを
-  // rng で個体ごとにばらつかせる。屋根含めて壁本体はここで作り、看板は別途通常解像度で重ねる。
+  // 店舗A：24x34ドット。窓2つの標準型。
   E.defprop('shopA', 24, 34, (g, rng, opts) => {
     const wall = E.PAL.wall, wallLo = E.shade(wall,0.78), wallHi = E.shade(wall,1.18);
     E.rc(g,0,8,24,26,wall); E.rc(g,0,8,1,26,wallLo); E.rc(g,23,8,1,26,wallHi);
@@ -79,10 +71,8 @@ Hazama.Explore = (function(){
     E.rc(g,0,14,22,24,wall); E.rc(g,0,14,1,24,wallLo); E.rc(g,21,14,1,24,wallHi);
     E.speck(g, rng, 1,26,20,10, E.shade(wall,0.6), 8);
     E.rc(g,-1,10,24,5,E.PAL.roof); E.rc(g,-1,14,24,1,E.PAL.roofDark);
-    // オーニング（庇）：店の看板色ベースのストライプ
     for (let xx=0; xx<22; xx+=4) E.rc(g,xx,10,2,4, xx%8===0?accent:E.shade(accent,0.65));
     E.rc(g,-1,9,24,1,E.shade(accent,1.3));
-    // 大窓
     const wc = rng.f()<0.6 ? E.PAL.window : E.PAL.windowDim;
     E.rc(g,3,16,16,10,E.PAL.frame);
     E.rc(g,4,17,14,8,wc); E.rc(g,4,17,14,1,E.shade(wc,1.2)); E.rc(g,4,17,1,8,E.shade(wc,0.7));
@@ -91,7 +81,7 @@ Hazama.Explore = (function(){
     if (rng.f() < 0.4) E.drip(g, rng, rng.i(1,20), 15, 18, E.shade(wall,0.55));
   });
 
-  // 店舗C：26x30ドット。低め・横長で、丸看板ポール（提灯風アクセント）が付く食堂・甘味処タイプ。
+  // 店舗C：26x30ドット。低め・横長で、提灯風アクセントが付く食堂・甘味処タイプ。
   E.defprop('shopC', 26, 30, (g, rng, opts) => {
     const wall = E.PAL.wall, accent = opts.accent || '#6b3a63';
     const wallLo = E.shade(wall,0.8), wallHi = E.shade(wall,1.15);
@@ -105,11 +95,10 @@ Hazama.Explore = (function(){
       E.rc(g,wx,11,5,5,E.PAL.frame); E.rc(g,wx+1,12,3,3,wc);
     });
     E.rc(g,11,19,6,9,E.PAL.door); E.rc(g,11,19,6,1,E.shade(E.PAL.door,1.6));
-    // 提灯ポール
     E.rc(g,23,-2,1,9,E.shade('#5a4a30',1)); E.rc(g,21,6,5,6,accent); E.rc(g,21,6,5,1,E.shade(accent,1.4));
   });
 
-  // 店舗D：14x22ドット。自販機・小さな売店のような無人／小型スポット用。
+  // 店舗D：14x22ドット。自販機・小型売店向け。通常店舗より出現率を下げて使う。
   E.defprop('shopD', 14, 22, (g, rng, opts) => {
     const accent = opts.accent || '#2e4a5e';
     E.rc(g,1,2,12,20,E.shade(accent,0.9)); E.rc(g,1,2,12,2,E.shade(accent,1.3));
@@ -119,10 +108,20 @@ Hazama.Explore = (function(){
     E.speck(g, rng, 1,2,12,20, E.shade(accent,0.6), 5);
   });
 
-  // shopD は自販機・小型売店向けの小さい見た目なので、通常の店舗では出現率を下げる。
   const SHOP_PROPS = ['shopA','shopA','shopB','shopB','shopC','shopC','shopD'];
   const SHOP_DIMS = { shopA:{w:24,h:34,scale:3.5}, shopB:{w:22,h:38,scale:3.2},
     shopC:{w:26,h:30,scale:3.4}, shopD:{w:14,h:22,scale:3.6} };
+
+  // 駅ファサード：30x32ドット。改札の明かりを窓のように並べた、店舗より一回り大きい構造物。
+  E.defprop('stationFacade', 30, 32, (g, rng) => {
+    const wall = '#3a3550', wallLo = E.shade(wall,0.75), wallHi = E.shade(wall,1.2);
+    E.rc(g,0,10,30,22,wall); E.rc(g,0,10,1,22,wallLo); E.rc(g,29,10,1,22,wallHi);
+    E.rc(g,-2,4,34,7,E.PAL.roof); E.rc(g,-2,10,34,1,E.PAL.roofDark);
+    for (let xx=-2; xx<32; xx+=4) E.rc(g,xx,4,2,7,E.shade(E.PAL.roof,0.85));
+    for (let wx=3; wx<27; wx+=8){ E.rc(g,wx,14,5,10,E.PAL.frame); E.rc(g,wx+1,15,3,8,E.PAL.window); }
+    E.rc(g,11,24,8,8,E.PAL.door);
+    E.speck(g, rng, 0,10,30,22, E.shade(wall,0.6), 10);
+  });
 
   // 木：14x22ドット。生垣：20x10ドット。どちらも通行はできない前提の純装飾。
   E.defprop('treeA', 14, 22, (g, rng) => {
@@ -138,19 +137,26 @@ Hazama.Explore = (function(){
     E.speck(g, rng, 0,3,20,7, E.shade(leaf,0.65), 9);
   });
 
-  // 道の舗装テクスチャ（16x16タイル）。CanvasPattern化して strokeStyle に使う。
+  // 道路舗装テクスチャ（16x16タイル）。CanvasPattern化して fillStyle に使う（街全体の下敷き）。
   let roadPattern = null;
   function getRoadPattern(){
     if (roadPattern) return roadPattern;
     const c = document.createElement('canvas'); c.width = 16; c.height = 16;
     const g = c.getContext('2d');
     const rng = E.makeRNG(4242);
-    // 地面のパープル系パレットとは意図的に離した、暖色寄りのグレーで舗装らしいコントラストを作る。
     E.rc(g,0,0,16,16, '#5c5346');
     E.speck(g, rng, 0,0,16,16, '#6e6353', 16);
     E.speck(g, rng, 0,0,16,16, '#433a2f', 12);
     roadPattern = ctx.createPattern(c, 'repeat');
     return roadPattern;
+  }
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
   }
 
   // 駅IDから決定論的な疑似乱数を作る（同じ駅は毎回同じレイアウトになる）。
@@ -168,158 +174,132 @@ Hazama.Explore = (function(){
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
-  function distToSegment(p, a, b){
-    const dx=b.x-a.x, dy=b.y-a.y, len2=dx*dx+dy*dy || 1;
-    let t=((p.x-a.x)*dx+(p.y-a.y)*dy)/len2; t=Math.max(0,Math.min(1,t));
-    return Math.hypot(p.x-(a.x+dx*t), p.y-(a.y+dy*t));
-  }
 
-  // 道を「出発点(プレイヤー初期位置)→ハブ→各出口」の折れ線群として生成する。
-  // 出口＝隣駅の乗り場（1〜4件、駅によって変わる）＋ヨドミ。同じロジックでどの駅にも対応する。
-  // S はワールドの規模係数（大きい駅ほど道の曲がり幅も比例して大きくする）。
-  function buildRoad(warps, rand, S){
-    const W = state.worldW, H = state.worldH;
-    const spawn = { x: W*0.5, y: H*0.88 };
-    const hub = { x: W*(0.36+rand()*0.28), y: H*(0.44+rand()*0.12) };
-    const edges = [{ a: spawn, b: hub }];
-    const yodomiPos = { x: W*(0.20+rand()*0.60), y: H*(0.10+rand()*0.12) };
-    warps.map(w => ({ x:w.x, y:w.y })).concat([yodomiPos]).forEach(t => {
-      const mt = 0.3 + rand()*0.35;
-      const mid = {
-        x: hub.x + (t.x-hub.x)*mt + (rand()-0.5)*70*S,
-        y: hub.y + (t.y-hub.y)*mt + (rand()-0.5)*46*S,
-      };
-      edges.push({ a: hub, b: mid }, { a: mid, b: t });
-    });
-    return { edges, yodomiPos };
-  }
+  // ==== 街のレイアウト：碁盤目状の街区（ブロック）＋区画間の街路 ==========
+  // 一本道の折れ線に頼っていた旧方式は、縦に伸びすぎる・単調という指摘を受けて撤廃。
+  // 参考画像（さくら住宅街的なマップ）に寄せ、街路の格子の中に建物が並ぶ区画を敷き詰める方式にした。
+  const TOWN_GRID = {
+    major:   { cols:6, rows:3 },
+    minor:   { cols:4, rows:2 },
+    special: { cols:3, rows:2 },
+    pass:    { cols:2, rows:1 },
+  };
+  const BLOCK_W = 340, BLOCK_H = 250, STREET_W = 60;
 
-  // 道沿いに店舗を配置する（データ駆動の要）。店舗数が0〜N軒のどの駅データを渡しても、
-  // 道の区間からランダムに点を選び、垂直方向にオフセットして重ならない位置を探す。
-  // プロップの型（shopA〜D）は店舗IDのハッシュで決定的に選ぶ＝毎回同じ店は同じ見た目になる。
-  // 特定の駅名・店舗IDには一切依存しない（本町専用のハードコードはここには置かない）。
-  function placeBuildings(stationId, edges, rand, S){
-    const W = state.worldW, H = state.worldH;
+  function gridDimsFor(stationId){
     const station = D.stations[stationId];
-    const buildings = [];
-    if (!station || !station.shops) return buildings;
-    const margin = 100*S, minGap = 120*S, offBase = 50*S, offRange = 28*S;
-    station.shops.forEach((shop, i) => {
-      let spot = null;
-      for (let tries=0; tries<60 && !spot; tries++){
-        const edge = edges[Math.floor(rand()*edges.length)];
-        const t = 0.15 + rand()*0.55;
-        const px = edge.a.x + (edge.b.x-edge.a.x)*t, py = edge.a.y + (edge.b.y-edge.a.y)*t;
-        const dx = edge.b.x-edge.a.x, dy = edge.b.y-edge.a.y, len = Math.hypot(dx,dy) || 1;
-        const nx = -dy/len, ny = dx/len;
-        // 建物のスプライトは常に正面(下向き)固定なので、道に対して自然に見えるよう
-        // 縦成分のあるオフセットは常に「道より上」に建物が来る側を選ぶ。
-        const side = Math.abs(ny) > 0.05 ? (ny > 0 ? -1 : 1) : (rand()<0.5?-1:1);
-        const offset = offBase + rand()*offRange;
-        const bx = px + nx*offset*side, by = py + ny*offset*side;
-        if (bx < margin || bx > W-margin || by < H*0.10 || by > H*0.86) continue;
-        if (buildings.some(b => Math.hypot(b.x-bx, b.y-by) < minGap)) continue;
-        spot = { x: bx, y: by };
-      }
-      if (!spot) spot = { x: W*(0.28+(i%3)*0.24), y: H*(0.30+Math.floor(i/3)*0.16) };
-      const propId = SHOP_PROPS[hashStr(shop.id) % SHOP_PROPS.length];
-      buildings.push({ x: spot.x, y: spot.y, shop, propId });
-    });
-    return buildings;
+    const grid = TOWN_GRID[station && station.type] || TOWN_GRID.minor;
+    return {
+      cols: grid.cols, rows: grid.rows,
+      w: grid.cols*BLOCK_W + (grid.cols+1)*STREET_W,
+      h: grid.rows*BLOCK_H + (grid.rows+1)*STREET_W,
+    };
+  }
+  function blockRect(c, r){
+    const x0 = STREET_W + c*(BLOCK_W+STREET_W), y0 = STREET_W + r*(BLOCK_H+STREET_W);
+    return { c, r, x0, y0, w:BLOCK_W, h:BLOCK_H, cx:x0+BLOCK_W/2, cy:y0+BLOCK_H/2 };
   }
 
-  // 木・生垣などの通行できない装飾物。道・建物・ヨドミ・乗り場から一定距離を空けて散らす。
-  // count/tries はワールド面積比に応じて増やし、駅が大きくなっても密度が薄まりすぎないようにする。
-  function buildDecor(stationId, edges, buildings, warps, yodomiPos, rand, S){
-    const W = state.worldW, H = state.worldH;
-    const decor = [];
-    const target = Math.min(60, Math.round(9 * S * S));
-    const maxTries = target * 30;
-    for (let tries=0; tries<maxTries && decor.length<target; tries++){
-      const x = 60*S + rand()*(W-120*S), y = H*0.14 + rand()*(H*0.66);
-      if (edges.some(e => distToSegment({x,y}, e.a, e.b) < 34*S)) continue;
-      if (buildings.some(b => Math.hypot(b.x-x,b.y-y) < 80*S)) continue;
-      if (warps.some(w => Math.hypot(w.x-x,w.y-y) < 60)) continue;
-      if (Math.hypot(yodomiPos.x-x, yodomiPos.y-y) < 55) continue;
-      if (decor.some(d => Math.hypot(d.x-x,d.y-y) < 40*S)) continue;
-      decor.push({ x, y, kind: rand()<0.65?'tree':'hedge', s: 0.9+rand()*0.5, id: stationId+'#decor'+decor.length });
+  // 駅ブロック（改札があるブロック、常に左端の縦中央）・公園ブロック（ヨドミ＋装飾多め）を確保し、
+  // 残りのブロックへ店舗を輪番で振り分けて、各ブロックの上辺/下辺に沿って等間隔に並べる。
+  function buildTown(stationId, rand){
+    const grid = gridDimsFor(stationId);
+    const blocks = [];
+    for (let r=0;r<grid.rows;r++) for (let c=0;c<grid.cols;c++) blocks.push(blockRect(c,r));
+
+    const stationBlock = blocks.find(b => b.c===0 && b.r===Math.floor((grid.rows-1)/2)) || blocks[0];
+    let rest = blocks.filter(b => b!==stationBlock);
+    let parkBlock = null;
+    if (rest.length >= 2){
+      parkBlock = rest[Math.floor(rand()*rest.length)];
+      rest = rest.filter(b => b!==parkBlock);
     }
-    return decor;
-  }
+    const shopBlocks = rest.length ? rest : blocks.filter(b => b!==stationBlock);
 
-  // 隣駅への乗り場（駅間移動の入口）を組み立てる。data.js の adjacentStations() が
-  // 返す隣駅を、路線に関わらず同じロジックでワールド端（左＝prev、右＝next）に配置する。
-  // 1駅から複数路線に乗り換えられる場合（例：追分）は同じ側に縦に並べる。
-  function buildWarps(stationId){
-    const adj = D.adjacentStations(stationId);
-    state.warps = [];
-    const bySide = { prev: [], next: [] };
-    adj.forEach(a => bySide[a.dir].push(a));
-    const y0 = state.worldH*0.5;
-    bySide.prev.forEach((a, i) => {
-      const st = D.stations[a.id];
-      state.warps.push({ ...a, name: (st && st.name) || '？？？', x: 40, y: y0 + i*40, r: 24 });
-    });
-    bySide.next.forEach((a, i) => {
-      const st = D.stations[a.id];
-      state.warps.push({ ...a, name: (st && st.name) || '？？？', x: state.worldW-40, y: y0 + i*40, r: 24 });
-    });
-  }
-
-  // 駅の規模から、そのワールドの大きさ（ピクセル）を求める。電車移動時は到着駅の実寸を
-  // init() 実行前に知る必要がある（逆側の乗り場ぎりぎりに出す座標を計算するため）。
-  function worldDimsFor(stationId){
     const station = D.stations[stationId];
-    const scale = WORLD_SCALE[station && station.type] || WORLD_SCALE.minor;
-    return { w: Math.round(E.W*scale.w), h: Math.round(E.H*scale.h), scale };
+    const shops = (station && station.shops) || [];
+    const buildings = [];
+    const perBlockCount = new Map();
+    shops.forEach((shop, i) => {
+      const block = shopBlocks[i % shopBlocks.length];
+      const key = block.c+'_'+block.r;
+      const idx = perBlockCount.get(key) || 0;
+      perBlockCount.set(key, idx+1);
+      const propId = SHOP_PROPS[hashStr(shop.id) % SHOP_PROPS.length];
+      buildings.push({ shop, propId, block, onTop: idx%2===0, jitter:(rand()-0.5)*24 });
+    });
+    // 辺ごとにグルーピングし直し、実際にその辺へ何軒並ぶか分かってから等間隔位置を確定する。
+    const bySide = new Map();
+    buildings.forEach(b => {
+      const key = b.block.c+'_'+b.block.r+'|'+b.onTop;
+      if (!bySide.has(key)) bySide.set(key, []);
+      bySide.get(key).push(b);
+    });
+    bySide.forEach(list => {
+      list.forEach((b, i) => {
+        const t = (i+1)/(list.length+1);
+        const dim = SHOP_DIMS[b.propId];
+        b.x = b.block.x0 + t*b.block.w + b.jitter;
+        b.y = b.onTop ? b.block.y0 + dim.h*dim.scale + 6 : b.block.y0 + b.block.h - 8;
+      });
+    });
+
+    // 装飾：各ブロックの余白へ木・生垣を散らす。公園ブロックは密度を上げる。
+    const decor = [];
+    blocks.forEach(block => {
+      if (block === stationBlock) return;
+      const isPark = block === parkBlock;
+      const target = isPark ? 11 : 4;
+      let placed = 0;
+      for (let tries=0; tries<target*25 && placed<target; tries++){
+        const x = block.x0 + 16 + rand()*(block.w-32), y = block.y0 + 16 + rand()*(block.h-32);
+        if (buildings.some(b => b.block===block && Math.hypot(b.x-x,b.y-y) < 60)) continue;
+        if (isPark){ const d0={x:block.cx,y:block.cy}; if (Math.hypot(d0.x-x,d0.y-y) < 55) continue; }
+        if (decor.some(d => Math.hypot(d.x-x,d.y-y) < 34)) continue;
+        decor.push({ x, y, kind: rand()<0.6?'tree':'hedge', s:0.85+rand()*0.45, id: stationId+'#decor'+decor.length });
+        placed++;
+      }
+    });
+
+    const yodomiBlock = parkBlock || shopBlocks[shopBlocks.length-1] || stationBlock;
+    const yodomiPos = { x: yodomiBlock.cx, y: yodomiBlock.cy };
+    const stationGate = { x: stationBlock.x0 + stationBlock.w*0.5, y: stationBlock.y0 + stationBlock.h*0.58, r: 50 };
+
+    return { worldW:grid.w, worldH:grid.h, blocks, stationBlock, parkBlock, buildings, decor, yodomiPos, stationGate };
   }
 
   // stationId は呼び出し側（main.js）が指定する。ここではデフォルト駅を決め打ちしない。
-  // spawn を渡すと初期立ち位置を上書きできる（電車で隣駅から来た場合、逆側の乗り場に出す）。
+  // spawn を渡すと初期立ち位置を上書きできる（未指定時は自駅の改札のすぐ外に出す＝
+  // 駅構内から出た時も、電車で到着した時も、同じ場所から街に入る）。
   function init(stationId, spawn){
-    state.traveling = false;
+    state.enteringStation = false;
     const station = D.stations[stationId] || null;
     state.stationId = stationId;
     state.station = station;
 
-    const dims = worldDimsFor(stationId);
-    state.worldW = dims.w; state.worldH = dims.h;
-    const S = (dims.scale.w + dims.scale.h) / 2;
+    const rand = mulberry32(hashStr(stationId));
+    const town = buildTown(stationId, rand);
+    state.worldW = town.worldW; state.worldH = town.worldH;
+    state.blocks = town.blocks; state.stationBlock = town.stationBlock; state.parkBlock = town.parkBlock;
+    state.buildings = town.buildings; state.decor = town.decor;
+    state.stationGate = town.stationGate;
+    state.yodomi = { x: town.yodomiPos.x, y: town.yodomiPos.y, r:26, active:true, glow:1 };
 
-    if (spawn){ P.x = spawn.x; P.y = spawn.y; } else { P.x = state.worldW*0.5; P.y = state.worldH*0.88; }
+    if (spawn){ P.x = spawn.x; P.y = spawn.y; }
+    else { P.x = state.stationGate.x + 90; P.y = state.stationGate.y; }
     P.hp = P.maxhp;
 
-    buildWarps(stationId);
-    const rand = mulberry32(hashStr(stationId));
-    const road = buildRoad(state.warps, rand, S);
-    state.road = road.edges;
-    state.buildings = placeBuildings(stationId, road.edges, rand, S);
-    state.decor = buildDecor(stationId, road.edges, state.buildings, state.warps, road.yodomiPos, rand, S);
-
     state.sparkles = [];
-    for (let i=0;i<Math.round(6*S);i++){
-      state.sparkles.push({ x: state.worldW*(0.15+Math.random()*0.7), y: state.worldH*(0.20+Math.random()*0.6), got:false, ph:Math.random()*6 });
+    const sparkleCount = Math.max(6, Math.round(town.blocks.length * 1.6));
+    for (let i=0;i<sparkleCount;i++){
+      const b = town.blocks[Math.floor(rand()*town.blocks.length)];
+      state.sparkles.push({ x: b.x0+20+rand()*(b.w-40), y: b.y0+20+rand()*(b.h-40), got:false, ph:rand()*6 });
     }
-    state.cat = { x:state.worldW*0.4, y:state.worldH*0.55, vx:0, vy:0, timer:0, say:0 };
-    state.yodomi = { x: road.yodomiPos.x, y: road.yodomiPos.y, r:26, active:true, glow:1 };
+    state.cat = { x:state.stationGate.x+140, y:state.stationGate.y+40, vx:0, vy:0, timer:0, say:0 };
     updateCamera();
     document.getElementById('battleHud').style.display = 'none';
     document.getElementById('battleBtns').style.display = 'none';
-    document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始 ／ 道の先の乗り場から隣駅へ ／ Shift ダッシュ';
-  }
-
-  // 隣駅への乗車演出。フェードで暗転→到着駅を組み立て直し、出発方向と逆側の乗り場に出す。
-  function travelTo(w){
-    state.traveling = true;
-    E.banner('乗車', w.lineName + ' ' + w.name + ' ゆき', 700);
-    E.fadeThen(() => {
-      // 到着直後に反対側の乗り場のトリガー半径へ入り込んで即座に引き返してしまわないよう、
-      // 到着駅の実寸（init前に分かる）からワールド端より十分離れた位置を計算しておく。
-      const dims = worldDimsFor(w.id);
-      const spawn = { x: w.dir === 'next' ? 110 : dims.w-110, y: dims.h*0.5 };
-      init(w.id, spawn);
-      E.banner(D.stations[w.id].name, '到着', 900);
-    }, 420);
+    document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始 ／ 改札で駅構内へ ／ Shift ダッシュ';
   }
 
   function spawnDust(){
@@ -337,7 +317,7 @@ Hazama.Explore = (function(){
     const { dx, dy, m } = E.readAxis();
     const spd = D.balance.playerSpd * (E.keys.run ? D.balance.dashMultiplier : 1);
     if (m>0){ P.dir.x=dx/m; P.dir.y=dy/m; P.x+=dx/m*spd; P.y+=dy/m*spd; spawnDust(); }
-    P.x = Math.max(30, Math.min(state.worldW-30, P.x)); P.y = Math.max(state.worldH*0.08, Math.min(state.worldH-24, P.y));
+    P.x = Math.max(20, Math.min(state.worldW-20, P.x)); P.y = Math.max(20, Math.min(state.worldH-20, P.y));
     updateCamera();
 
     const ally = Hazama.Battle.ally;
@@ -353,8 +333,8 @@ Hazama.Explore = (function(){
     cat.timer--;
     if (cat.timer<=0){ cat.timer = 60+Math.random()*60|0;
       const a = Math.random()*Math.PI*2; cat.vx=Math.cos(a)*0.6; cat.vy=Math.sin(a)*0.6; }
-    cat.x = Math.max(60, Math.min(state.worldW-60, cat.x+cat.vx));
-    cat.y = Math.max(state.worldH*0.3, Math.min(state.worldH-40, cat.y+cat.vy));
+    cat.x = Math.max(30, Math.min(state.worldW-30, cat.x+cat.vx));
+    cat.y = Math.max(30, Math.min(state.worldH-30, cat.y+cat.vy));
     if (Math.hypot(cat.x-P.x, cat.y-P.y)<40 && cat.say<=0 && Math.random()<0.01) cat.say = 70;
     if (cat.say>0) cat.say--;
 
@@ -376,13 +356,14 @@ Hazama.Explore = (function(){
       }
     }
 
-    if (!state.traveling){
-      const w = state.warps.find(w => Math.hypot(P.x-w.x, P.y-w.y) < w.r);
-      if (w) travelTo(w);
+    if (!state.enteringStation && Math.hypot(P.x-state.stationGate.x, P.y-state.stationGate.y) < state.stationGate.r){
+      state.enteringStation = true;
+      E.banner('駅構内へ','改札を抜ける', 700);
+      E.fadeThen(() => { if (onEnterStation) onEnterStation(state.stationId); }, 420);
     }
   }
 
-  // 壁・屋根・窓・ドアはドット絵プロップ（shopA〜D、店舗IDから決定的に選択）に置き換え。
+  // 壁・屋根・窓・ドアはドット絵プロップ（shopA〜D、店舗IDから決定的に選択）。
   // 看板だけは可読性のため通常解像度のベクター文字のまま、プロップの上に重ねて描く。
   function drawShop(b){
     const dim = SHOP_DIMS[b.propId];
@@ -399,6 +380,15 @@ Hazama.Explore = (function(){
     ctx.fillStyle = '#f4e6c8'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(b.shop.name, b.x, signY+13);
     ctx.restore();
+  }
+
+  function drawStationGate(){
+    const g = state.stationGate;
+    E.drawSprite('stationFacade', state.stationId, g.x, g.y, 4.6);
+    ctx.fillStyle = '#e9e6da'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText((state.station && state.station.name) || '駅', g.x, g.y - 32*4.6 - 8);
+    ctx.fillStyle = '#7fd1c1'; ctx.font = '9px monospace';
+    ctx.fillText('改札', g.x, g.y - 32*4.6 + 6);
   }
 
   function drawCat(){
@@ -432,28 +422,19 @@ Hazama.Explore = (function(){
     ctx.fillStyle = '#9aa7c7'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
     ctx.fillText('ヨドミ', y.x, y.y-42);
   }
-  function drawWarp(w){
-    ctx.save(); ctx.translate(w.x, w.y);
-    ctx.fillStyle = '#2a2540'; ctx.fillRect(-16,-46,32,46);
-    ctx.fillStyle = '#7fd1c1'; ctx.fillRect(-16,-46,32,6);
-    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.strokeRect(-16,-46,32,46);
-    ctx.fillStyle = '#e9e6da'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(w.dir === 'next' ? '▶' : '◀', 0, -18);
-    ctx.fillStyle = '#9aa7c7'; ctx.font = '9px monospace';
-    ctx.fillText(w.lineName, 0, -56);
-    ctx.fillStyle = '#e9e6da'; ctx.font = 'bold 11px monospace';
-    ctx.fillText(w.name, 0, -68);
-    ctx.restore();
-  }
-  function drawRoad(){
-    const edges = state.road;
+  // 街の下敷き：全体を舗装テクスチャで塗り、その上に区画（ブロック）を丸角の色面として重ねる。
+  // 駅ブロック＝濃い青灰、公園ブロック＝緑、それ以外＝紫がかった街区色、という単純な塗り分けで、
+  // 参考画像同様「街路の中に色の付いた区画が並ぶ」構図にする。
+  function drawTownBase(){
     ctx.save();
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = getRoadPattern(); ctx.lineWidth = 30;
-    edges.forEach(e => { ctx.beginPath(); ctx.moveTo(e.a.x,e.a.y); ctx.lineTo(e.b.x,e.b.y); ctx.stroke(); });
-    ctx.setLineDash([4,8]); ctx.strokeStyle = 'rgba(232,200,106,.28)'; ctx.lineWidth = 2;
-    edges.forEach(e => { ctx.beginPath(); ctx.moveTo(e.a.x,e.a.y); ctx.lineTo(e.b.x,e.b.y); ctx.stroke(); });
-    ctx.setLineDash([]);
+    ctx.fillStyle = getRoadPattern();
+    ctx.fillRect(0, 0, state.worldW, state.worldH);
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.28)';
+    state.blocks.forEach(b => {
+      const isStation = b === state.stationBlock, isPark = b === state.parkBlock;
+      ctx.fillStyle = isStation ? '#38334c' : (isPark ? '#3c5638' : '#454064');
+      roundRect(b.x0, b.y0, b.w, b.h, 14); ctx.fill(); ctx.stroke();
+    });
     ctx.restore();
   }
   function drawDecorItem(d){
@@ -485,12 +466,12 @@ Hazama.Explore = (function(){
     ctx.save();
     ctx.translate(-state.camera.x, -state.camera.y);
 
-    drawRoad();
+    drawTownBase();
     state.decor.forEach(drawDecorItem);
     state.buildings.forEach(drawShop);
+    drawStationGate();
     state.sparkles.forEach(drawSparkle);
     drawYodomi();
-    state.warps.forEach(drawWarp);
 
     const ally = Hazama.Battle.ally;
     const list = [{y:P.y, fn:drawPlayerSprite}, {y:state.cat.y, fn:drawCat}];

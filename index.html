@@ -20,10 +20,11 @@
     <div id="introPane" class="intro">
       <h1>ハザマ <span>─ 本編プロジェクト</span></h1>
       <p>境目線26駅ぶんの店舗データを <em>data.js</em> から読み込むデータ駆動構成。
-      各駅は道が折れ線で分岐する回遊マップとして自動生成され、電車で隣駅・隣路線へ移動できます。</p>
+      各駅は街区（ブロック）が街路に並ぶ町として自動生成され、改札を抜けた駅構内から
+      路線図を見て乗車券を買い、電車で隣駅・隣路線へ移動できます。</p>
       <div class="keys">
         <b>WASD / 矢印</b> 移動　<b>Shift</b> ダッシュ<br>
-        探索中：ヨドミに近づくだけで戦闘開始／道の先の乗り場から隣駅へ<br>
+        探索中：ヨドミに近づくだけで戦闘開始／改札で駅構内へ<br>
         戦闘中：<b>J</b>こうげき　<b>U</b>際弾　<b>K</b>際シフト　<b>I</b>なごり水　<b>L</b>定着
       </div>
       <button class="startbtn" id="newGameBtn">際に踏み込む ▸</button>
@@ -46,6 +47,26 @@
       <div class="encur" id="enCur">縁 0</div>
       <div class="banner" id="banner"><div class="big" id="bBig"></div><div class="sub" id="bSub"></div></div>
       <div class="fade" id="fade"></div>
+
+      <div class="trainPanel" id="trainPanel" style="display:none">
+        <div id="trainRouteText">─</div>
+        <div class="trainProgress"><i id="trainProgressBar" style="width:0%"></i></div>
+      </div>
+
+      <div class="stationPanel" id="stationPanel" style="display:none">
+        <div class="stationInfoBar">
+          <span id="stationTitle">駅</span>
+          <button id="stationExitBtn">町へ戻る ▸</button>
+        </div>
+        <div class="stationTabs">
+          <button id="tabDeparture" class="stTab active">発車案内</button>
+          <button id="tabRouteMap" class="stTab">路線図</button>
+        </div>
+        <div id="departureList" class="departureList"></div>
+        <div id="routeMapView" class="routeMapView" style="display:none">
+          <canvas id="routeMapCv" width="700" height="240"></canvas>
+        </div>
+      </div>
       <div id="touch">
         <div id="stick"><div id="nub"></div></div>
         <div class="tbtns" id="exploreBtns" style="grid-template-columns:50px">
@@ -74,6 +95,8 @@
 <script src="js/save.js"></script>
 <script src="js/battle.js"></script>
 <script src="js/explore.js"></script>
+<script src="js/station.js"></script>
+<script src="js/train.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
