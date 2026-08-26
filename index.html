@@ -3,82 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ハザマ ─ 本編プロジェクト</title>
+<title>あわいの旅路 ─ 第1章 体験版</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="app">
   <div class="frame">
     <div class="top">
-      <span>ハザマウォッチ <span class="dot">◈</span> 本編ビルド</span>
-      <span class="topRight">
-        <button class="diaryBtn" id="itemsBtn" style="display:none">もちもの</button>
-        <button class="diaryBtn" id="diaryBtn" style="display:none">日記</button>
-        <span id="clock">17:42</span>
-      </span>
+      <span>あわいの旅路 <span class="dot">◈</span> 第1章「誰そ彼」体験版</span>
     </div>
 
     <div id="introPane" class="intro">
-      <h1>ハザマ <span>─ 本編プロジェクト</span></h1>
-      <p>境目線26駅ぶんの店舗データを <em>data.js</em> から読み込むデータ駆動構成。
-      各駅は街区（ブロック）が街路に並ぶ町として自動生成され、改札を抜けた駅構内から
-      路線図を見て乗車券を買い、電車で隣駅・隣路線へ移動できます。</p>
+      <h1>あわいの旅路 <span>─ 第1章「誰そ彼」</span></h1>
+      <p>新市街・本町。学校帰りの<em>空（そら）</em>は、昔から時々「際（きわ）」——現実に重なる薄い層——が見える。
+      黄昏の路地で、鐘の音だけが響くあわいもの<em>鐘江（かなえ）</em>と出会うところから、第1章が始まる。</p>
       <div class="keys">
         <b>WASD / 矢印</b> 移動　<b>Shift</b> ダッシュ<br>
-        探索中：ヨドミに近づくだけで戦闘開始／改札で駅構内へ<br>
-        戦闘中：<b>J</b>こうげき　<b>U</b>際弾　<b>K</b>際シフト　<b>I</b>なごり水　<b>L</b>定着
+        統一3/4視点：奥へ進むほど小さく、手前ほど大きく見える<br>
+        戦闘中：<b>J</b>こうげき　<b>K</b>鎮静（揺らぎ状態の相手に）
       </div>
       <button class="startbtn" id="newGameBtn">際に踏み込む ▸</button>
-      <button class="startbtn ghost" id="continueBtn" style="display:none">日記から続ける</button>
-    </div>
-
-    <div id="charSelect" class="intro" style="display:none">
-      <h1>ハザマ <span>─ 操作キャラクターを選ぶ</span></h1>
-      <div id="charList" class="charList"></div>
     </div>
 
     <div id="wrap" style="display:none">
       <canvas id="cv"></canvas>
       <div class="hud" id="battleHud" style="display:none">
-        <div class="meter"><div class="lab">主人公 HP</div><div class="bar hp"><i id="phpBar" style="width:100%"></i></div></div>
-        <div class="meter"><div class="lab">際力</div><div class="bar kw"><i id="kwBar" style="width:50%"></i></div></div>
+        <div class="meter"><div class="lab">空 HP</div><div class="bar hp"><i id="phpBar" style="width:100%"></i></div></div>
         <div class="meter"><div class="lab" id="foeLab">あわいもの HP</div><div class="bar hp"><i id="fhpBar" style="width:100%"></i></div></div>
-        <div class="meter" id="allyMeter0" style="display:none"><div class="lab" id="allyLab0">仲間 HP</div><div class="bar al"><i id="allyBar0" style="width:100%"></i></div></div>
-        <div class="meter" id="allyMeter1" style="display:none"><div class="lab" id="allyLab1">仲間 HP</div><div class="bar al"><i id="allyBar1" style="width:100%"></i></div></div>
-        <div class="meter" id="allyMeter2" style="display:none"><div class="lab" id="allyLab2">仲間 HP</div><div class="bar al"><i id="allyBar2" style="width:100%"></i></div></div>
       </div>
-      <div class="encur" id="enCur">縁 0</div>
       <div class="banner" id="banner"><div class="big" id="bBig"></div><div class="sub" id="bSub"></div></div>
       <div class="fade" id="fade"></div>
-
-      <div class="trainPanel" id="trainPanel" style="display:none">
-        <div id="trainRouteText">─</div>
-        <div class="trainProgress"><i id="trainProgressBar" style="width:0%"></i></div>
-      </div>
-
-      <div class="stationPanel" id="stationPanel" style="display:none">
-        <div class="stationInfoBar">
-          <span id="stationTitle">駅</span>
-          <button id="stationExitBtn">町へ戻る ▸</button>
-        </div>
-        <div class="stationTabs">
-          <button id="tabDeparture" class="stTab active">発車案内</button>
-          <button id="tabRouteMap" class="stTab">路線図</button>
-        </div>
-        <div id="departureList" class="departureList"></div>
-        <div id="routeMapView" class="routeMapView" style="display:none">
-          <canvas id="routeMapCv" width="700" height="240"></canvas>
-        </div>
-      </div>
-
-      <div class="interiorPanel" id="interiorPanel" style="display:none">
-        <div class="stationInfoBar">
-          <span id="interiorTitle">店舗</span>
-          <button id="interiorExitBtn">出る ▸</button>
-        </div>
-        <div id="interiorNpcLine" class="interiorNpcLine"></div>
-        <div id="interiorBody" class="interiorBody"></div>
-      </div>
 
       <div class="introDialogue" id="introDialogue" style="display:none">
         <div class="introBox">
@@ -93,39 +47,20 @@
         <div class="tbtns" id="exploreBtns" style="grid-template-columns:50px">
           <button class="tb" id="tDash">ダッシュ<small>Shift</small></button>
         </div>
-        <div class="tbtns" id="battleBtns" style="display:none">
-          <button class="tb" id="tShift">際シフト<small>K</small></button>
+        <div class="tbtns" id="battleBtns" style="display:none;grid-template-columns:repeat(2,56px)">
           <button class="tb" id="tAtk">こうげき<small>J</small></button>
-          <button class="tb" id="tSkill">際弾<small>U</small></button>
-          <button class="tb" id="tItem">なごり水<small>I</small></button>
-          <button class="tb" id="tAnchor" style="grid-column:span 2;width:auto;border-radius:14px">定着<small>L</small></button>
+          <button class="tb" id="tPacify">鎮静<small>K</small></button>
         </div>
       </div>
     </div>
-    <div class="foot" id="foot">WASD 移動 ／ ヨドミに近づくと戦闘開始</div>
-
-    <div class="diary" id="diaryPanel" style="display:none">
-      <div class="diaryHead">日記<button id="diaryCloseBtn">×</button></div>
-      <div class="diarySlots" id="diarySlots"></div>
-    </div>
-
-    <div class="diary" id="itemsPanel" style="display:none">
-      <div class="diaryHead">もちもの<button id="itemsCloseBtn">×</button></div>
-      <div class="ixTabs" id="itemsTabs"></div>
-      <div class="ixList" id="itemsList"></div>
-    </div>
+    <div class="foot" id="foot">WASD 移動</div>
   </div>
 </div>
 
 <script src="js/engine.js"></script>
 <script src="js/data.js"></script>
-<script src="js/save.js"></script>
-<script src="js/inventory.js"></script>
 <script src="js/battle.js"></script>
 <script src="js/explore.js"></script>
-<script src="js/station.js"></script>
-<script src="js/train.js"></script>
-<script src="js/interior.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
