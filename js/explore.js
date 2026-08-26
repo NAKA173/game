@@ -1,7 +1,8 @@
 /*
  * explore.js
- * 街歩き（Yソート2D、遠近圧縮なし）。data.js の駅データから店舗を構築する。
- * ヨドミに近づくとバトルへ遷移する。
+ * 本町の道モジュール歩き（統一3/4視点）。道は「深度(depth)を持つ直線区間の連なり」として
+ * data.js の town.modules に定義し、プレイヤーは深度方向(前後)とレーンX方向(左右)に動く。
+ * 深度が水平線への奥行きを兼ねるため、カメラは深度方向にだけ追従スクロールする。
  */
 window.Hazama = window.Hazama || {};
 
@@ -9,209 +10,264 @@ Hazama.Explore = (function(){
   const E = Hazama.Engine;
   const D = Hazama.Data;
   const ctx = E.ctx;
+  const persp = Object.assign({}, E.DEFAULT_PERSPECTIVE);
 
-  let P, St, onEnterBattle;
-  const wallColors = ['#4a4266','#43395c','#3c3452','#4e4468'];
+  let P, St, onEncounter;
   const state = {
-    buildings: [], sparkles: [], cat: {x:0,y:0,vx:0,vy:0,timer:0,say:0},
-    yodomi: {x:0,y:0,r:26,active:true,glow:1},
-    dust: [],
+    modules: [], moduleStarts: [], totalDepth: 0,
+    cameraDepth: 0, seenBacktalk: false, encounterFired: {}, exhibitSeen:false,
+    ally: null, allyDepth: 0, allyLane: 0, allyDir:'back',
   };
 
   function bindShared(sharedP, sharedSt, enterBattleFn){
-    P = sharedP; St = sharedSt; onEnterBattle = enterBattleFn;
+    P = sharedP; St = sharedSt; onEncounter = enterBattleFn;
   }
 
-  // 駅データから店舗インスタンスを組み立てる（データ駆動の要）
-  // 店舗数が0〜N軒のどの駅データを渡しても、同じロジックでジグザグ配置のマップを組み立てる。
-  // 特定の駅名・店舗IDには一切依存しない（本町専用のハードコードはここには置かない）。
-  function buildFromStation(stationId){
-    const station = D.stations[stationId];
-    state.buildings = [];
-    state.stationId = stationId;
-    state.station = station || null;
-    if (!station || !station.shops) return;
-    station.shops.forEach((shop, i) => {
-      const row = Math.floor(i / 2);
-      const side = i % 2 === 0 ? 0.14 : 0.86;
-      const y = E.H * 0.30 + row * 46;
-      state.buildings.push({
-        x: E.W * side, y, w: 150, h: 70, shop,
-        wall: wallColors[i % wallColors.length], roof:'#2a2540', roofDark:'#1c1830',
-      });
-    });
+  // ==== 人物プロップ：4方向（正面・背面・側面、右向きは側面の左右反転）====
+  // 低頭身(約2.5頭身)。opts.pal に body/bodyLo/bodyHi/face/hair/collar を渡す。
+  function personPalette(g, opts){
+    const pal = opts.pal || {};
+    return {
+      body: pal.body||'#334', bodyLo: pal.bodyLo||E.shade(pal.body||'#334',0.72),
+      bodyHi: pal.bodyHi||E.shade(pal.body||'#334',1.25),
+      face: pal.face||'#e3c39a', hair: pal.hair||'#1a1a22', collar: pal.collar||null,
+    };
+  }
+  E.defprop('personFront', 12, 22, (g, rng, opts) => {
+    const c = personPalette(g, opts);
+    E.rc(g,3,17,2,5,c.bodyLo); E.rc(g,7,17,2,5,c.bodyLo);
+    E.rc(g,2,8,8,9,c.body); E.rc(g,2,8,1,9,c.bodyLo); E.rc(g,9,8,1,9,c.bodyHi); E.rc(g,2,8,8,1,c.bodyHi);
+    if (c.collar) E.rc(g,4,8,4,2,c.collar);
+    E.rc(g,1,9,1,6,c.bodyLo); E.rc(g,10,9,1,6,c.bodyLo);
+    E.rc(g,3,2,6,6,c.face); E.rc(g,2,0,8,3,c.hair); E.rc(g,2,3,1,2,c.hair); E.rc(g,9,3,1,2,c.hair);
+    E.px(g,4,5,E.shade(c.face,0.4)); E.px(g,7,5,E.shade(c.face,0.4));
+  });
+  E.defprop('personBack', 12, 22, (g, rng, opts) => {
+    const c = personPalette(g, opts);
+    E.rc(g,3,17,2,5,c.bodyLo); E.rc(g,7,17,2,5,c.bodyLo);
+    E.rc(g,2,8,8,9,c.body); E.rc(g,2,8,1,9,c.bodyLo); E.rc(g,9,8,1,9,c.bodyHi); E.rc(g,2,8,8,1,c.bodyLo);
+    E.rc(g,1,9,1,6,c.bodyLo); E.rc(g,10,9,1,6,c.bodyLo);
+    E.rc(g,2,0,8,9,c.hair); E.rc(g,2,0,1,9,E.shade(c.hair,0.7)); E.rc(g,9,0,1,9,E.shade(c.hair,1.3));
+  });
+  E.defprop('personSide', 12, 22, (g, rng, opts) => {
+    const c = personPalette(g, opts);
+    E.rc(g,5,17,2,5,c.bodyLo); E.rc(g,7,18,2,4,c.bodyLo);
+    E.rc(g,3,8,7,9,c.body); E.rc(g,3,8,1,9,c.bodyLo); E.rc(g,9,8,1,9,c.bodyHi);
+    if (c.collar) E.rc(g,4,8,3,2,c.collar);
+    E.rc(g,4,2,5,6,c.face); E.rc(g,3,0,7,3,c.hair); E.rc(g,3,3,1,2,c.hair);
+    E.px(g,7,5,E.shade(c.face,0.4));
+  });
+
+  // ==== 街並みプロップ（真正面の絵のみ・情報量控えめ）====================
+  E.defprop('houseFront', 26, 30, (g, rng, opts) => {
+    const wall = opts.wall || '#4a4266';
+    E.rc(g,1,10,24,20,wall); E.rc(g,1,10,1,20,E.shade(wall,0.75)); E.rc(g,24,10,1,20,E.shade(wall,1.2));
+    E.rc(g,-1,4,28,7,E.PAL.roof); E.rc(g,-1,10,28,1,E.PAL.roofDark);
+    E.rc(g,4,14,6,6,E.PAL.frame); E.rc(g,5,15,4,4,E.PAL.window);
+    E.rc(g,16,14,6,6,E.PAL.frame); E.rc(g,17,15,4,4,rng.f()<0.5?E.PAL.window:E.PAL.windowDim);
+    E.rc(g,10,21,6,9,E.PAL.door);
+    E.speck(g, rng, 1,18,24,10, E.shade(wall,0.6), 6);
+  });
+  E.defprop('shopFront', 24, 26, (g, rng, opts) => {
+    const wall = '#4a4266', accent = opts.accent || '#7a4e3a';
+    E.rc(g,1,8,22,18,wall); E.rc(g,1,8,1,18,E.shade(wall,0.75)); E.rc(g,22,8,1,18,E.shade(wall,1.2));
+    E.rc(g,-1,3,26,6,accent); E.rc(g,-1,8,26,1,E.shade(accent,0.6));
+    E.rc(g,3,12,7,7,E.PAL.frame); E.rc(g,4,13,5,5,E.PAL.window);
+    E.rc(g,14,12,7,7,E.PAL.frame); E.rc(g,15,13,5,5,E.PAL.windowDim);
+    E.rc(g,9,18,6,8,E.PAL.door);
+    E.speck(g, rng, 1,16,22,10, E.shade(wall,0.6), 5);
+  });
+  E.defprop('treeFront', 14, 24, (g, rng) => {
+    const leaf = E.PAL.leaf, lit = E.PAL.leafLit, bark = E.PAL.bark;
+    E.rc(g,6,16,2,8,bark); E.rc(g,6,16,1,8,E.shade(bark,0.7));
+    E.rc(g,2,4,10,10,leaf); E.rc(g,3,2,8,4,leaf); E.rc(g,1,10,12,4,leaf);
+    E.rc(g,3,3,5,4,lit); E.rc(g,8,11,3,3,lit);
+    E.speck(g, rng, 1,2,12,12, E.shade(leaf,0.65), 7);
+  });
+  E.defprop('wallFront', 16, 20, (g, rng) => {
+    const wall = '#39324a';
+    E.rc(g,0,4,16,16,wall); E.rc(g,0,4,16,2,E.shade(wall,1.25));
+    E.speck(g, rng, 0,6,16,14, E.shade(wall,0.6), 10);
+    E.drip(g, rng, rng.i(2,13), 6, 12, E.shade(wall,0.5));
+  });
+  E.defprop('exhibitBoard', 22, 26, (g, rng) => {
+    const post = '#2a2540', board = '#e9e6da';
+    E.rc(g,9,10,4,16,post); E.rc(g,2,0,18,11,board);
+    E.rc(g,2,0,18,2,'#8a7a3f'); E.rc(g,3,3,16,3,'#3a3550'); E.rc(g,3,7,12,2,'#6a5f8a');
+    E.speck(g, rng, 2,0,18,11, '#c9c4b0', 8);
+  });
+  E.defprop('foeBell', 22, 22, (g, rng) => {
+    const body = '#5a4a7a', lit = E.shade(body,1.35), lo = E.shade(body,0.7);
+    E.rc(g,3,6,16,14,body); E.rc(g,3,6,16,2,lit); E.rc(g,3,18,16,2,lo);
+    E.rc(g,8,0,6,7,body); E.rc(g,9,1,4,4,lit);
+    E.rc(g,9,11,2,2,'#e8c86a'); E.rc(g,13,11,2,2,'#e8c86a');
+    E.speck(g, rng, 3,6,16,14, lo, 8);
+  });
+
+  const PROP_BY_KIND = {
+    house:{id:'houseFront', w:26,h:30, scale:2.6}, shop:{id:'shopFront', w:24,h:26, scale:2.6},
+    tree:{id:'treeFront', w:14,h:24, scale:2.4}, wall:{id:'wallFront', w:16,h:20, scale:2.6},
+    exhibit:{id:'exhibitBoard', w:22,h:26, scale:2.4},
+  };
+
+  // ==== 道モジュールの初期化：累積深度オフセットを前計算 ====================
+  function init(){
+    const town = D.town;
+    state.modules = town.modules;
+    let acc = 0; state.moduleStarts = [];
+    town.modules.forEach(m => { state.moduleStarts.push(acc); acc += m.len; });
+    state.totalDepth = acc;
+    state.encounterFired = {};
+    state.exhibitSeen = false;
+    state.ally = null;
+
+    P.depth = town.startDepth; P.laneX = town.startLane; P.dir = 'front';
+    P.hp = P.maxhp;
+    state.cameraDepth = 0;
+    document.getElementById('foot').innerHTML = 'WASD 移動 ／ Shift ダッシュ ／ 奥へ進む';
   }
 
-  // stationId は呼び出し側（main.js）が指定する。ここではデフォルト駅を決め打ちしない。
-  function init(stationId){
-    P.x = E.W*0.5; P.y = E.H*0.86; P.hp = P.maxhp;
-    buildFromStation(stationId);
-    state.sparkles = [];
-    for (let i=0;i<6;i++){
-      state.sparkles.push({ x: E.W*(0.3+Math.random()*0.4), y: E.H*(0.35+Math.random()*0.4), got:false, ph:Math.random()*6 });
+  function moduleAt(depth){
+    let idx = 0;
+    for (let i=0;i<state.modules.length;i++){
+      if (depth >= state.moduleStarts[i]) idx = i; else break;
     }
-    state.cat = { x:E.W*0.4, y:E.H*0.55, vx:0, vy:0, timer:0, say:0 };
-    state.yodomi = { x:E.W*0.5, y:E.H*0.20, r:26, active:true, glow:1 };
-    document.getElementById('battleHud').style.display = 'none';
-    document.getElementById('battleBtns').style.display = 'none';
-    document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始';
+    return { idx, module: state.modules[idx], localDepth: depth - state.moduleStarts[idx] };
   }
 
-  function spawnDust(){
-    if (St.t % 9 !== 0) return;
-    state.dust.push({ x:P.x+(Math.random()-0.5)*6, y:P.y+8, life:16 });
+  function updateCamera(){
+    const lookahead = E.DEFAULT_PERSPECTIVE.depthMax * 0.32;
+    const maxCam = Math.max(0, state.totalDepth - E.DEFAULT_PERSPECTIVE.depthMax);
+    state.cameraDepth = Math.max(0, Math.min(maxCam, P.depth - lookahead));
   }
 
   function update(){
     const { dx, dy, m } = E.readAxis();
-    if (m>0){ P.dir.x=dx/m; P.dir.y=dy/m; P.x+=dx/m*D.balance.playerSpd; P.y+=dy/m*D.balance.playerSpd; spawnDust(); }
-    P.x = Math.max(30, Math.min(E.W-30, P.x)); P.y = Math.max(E.H*0.22, Math.min(E.H-24, P.y));
-
-    const ally = Hazama.Battle.ally;
-    if (ally){
-      const tx = P.x - P.dir.x*30, ty = P.y - P.dir.y*30 + 8;
-      const adx = tx-ally.ex, ady = ty-ally.ey, ad = Math.hypot(adx,ady)||1;
-      if (ad>4){ ally.ex += adx/ad*Math.min(ad,3.6); ally.ey += ady/ad*Math.min(ad,3.6); }
-      ally.edir = { x:adx/ad, y:ady/ad };
+    const spd = D.balance.playerSpd * (E.keys.run ? D.balance.dashMultiplier : 1);
+    if (m > 0){
+      const { module } = moduleAt(P.depth);
+      P.depth = Math.max(0, Math.min(state.totalDepth-4, P.depth - dy/m*spd));
+      const halfW = module.halfWidth - 10;
+      P.laneX = Math.max(-halfW, Math.min(halfW, P.laneX + dx/m*spd));
+      if (Math.abs(dy) >= Math.abs(dx)) P.dir = dy < 0 ? 'back' : 'front';
+      else P.dir = dx < 0 ? 'left' : 'right';
     }
+    updateCamera();
 
-    const cat = state.cat;
-    cat.timer--;
-    if (cat.timer<=0){ cat.timer = 60+Math.random()*60|0;
-      const a = Math.random()*Math.PI*2; cat.vx=Math.cos(a)*0.6; cat.vy=Math.sin(a)*0.6; }
-    cat.x = Math.max(60, Math.min(E.W-60, cat.x+cat.vx));
-    cat.y = Math.max(E.H*0.4, Math.min(E.H-40, cat.y+cat.vy));
-    if (Math.hypot(cat.x-P.x, cat.y-P.y)<40 && cat.say<=0 && Math.random()<0.01) cat.say = 70;
-    if (cat.say>0) cat.say--;
-
-    state.sparkles.forEach(s => {
-      if (s.got) return;
-      if (Math.hypot(s.x-P.x, s.y-P.y) < 20){
-        s.got = true; St.en += 5;
-        document.getElementById('enCur').textContent = '縁 ' + St.en;
-        E.banner('縁 +5','忘れ物を 拾った',500);
+    // 仲間（鐘江）は主人公の少し後ろをついてくる。
+    if (state.ally){
+      const targetDepth = P.depth - 34, targetLane = P.laneX;
+      const dD = targetDepth - state.allyDepth, dL = targetLane - state.allyLane;
+      const dist = Math.hypot(dD, dL);
+      if (dist > 4){
+        const sp = Math.min(dist, spd*0.9);
+        state.allyDepth += dD/dist*sp; state.allyLane += dL/dist*sp;
       }
-    });
+      state.allyDir = dD < -2 ? 'back' : (dD > 2 ? 'front' : (dL < 0 ? 'left' : 'right'));
+    }
 
-    if (state.yodomi.active){
-      state.yodomi.glow = 1 + Math.sin(St.t*0.06)*0.15;
-      if (Math.hypot(P.x-state.yodomi.x, P.y-state.yodomi.y) < state.yodomi.r){
-        state.yodomi.active = false;
-        E.banner('際が 濃くなる…','ヨドミに 引き込まれる',900);
-        E.fadeThen(() => { if (onEnterBattle) onEnterBattle(); }, 420);
+    // 明澄会の展示パネルに近づいたら一度だけ説明バナーを出す。
+    const { module: curModule, idx: curIdx } = moduleAt(P.depth);
+    const modStart = state.moduleStarts[curIdx];
+    if (!state.exhibitSeen){
+      (curModule.props||[]).forEach(pr => {
+        if (pr.kind === 'exhibit' && Math.abs(P.depth-(modStart+pr.depth)) < 40 && Math.abs(P.laneX-pr.laneX) < 40){
+          state.exhibitSeen = true;
+          E.banner('明澄会 展示パネル', pr.label, 1800);
+        }
+      });
+    }
+    if (curModule.dusk && !state.seenBacktalk){
+      state.seenBacktalk = true;
+      E.banner('……鐘の音？', '静かな路地に、何かの気配がする', 1400);
+    }
+
+    // 遭遇トリガー（区間内の深度レンジに入ったら一度だけ発火）。
+    const enc = curModule.encounter;
+    if (enc && !state.encounterFired[enc.id] && P.depth >= modStart+enc.fromDepth && P.depth <= modStart+enc.toDepth){
+      state.encounterFired[enc.id] = true;
+      E.fadeThen(() => { if (onEncounter) onEncounter(enc); }, 500);
+    }
+  }
+
+  function drawGroundBands(){
+    const step = 30, from = state.cameraDepth, to = Math.min(state.totalDepth, state.cameraDepth + E.DEFAULT_PERSPECTIVE.depthMax);
+    for (let d = to; d > from; d -= step){
+      const d0 = Math.max(from, d-step);
+      const { module } = moduleAt(Math.min(state.totalDepth-1, (d0+d)/2));
+      const t = 1 - (d - from) / E.DEFAULT_PERSPECTIVE.depthMax; // 0=奥,1=手前
+      const base = module.dusk ? '#241c30' : '#312a44';
+      const col = E.shade(base, 0.55 + 0.5*t);
+      E.drawRoadBand(persp, module.halfWidth+34, d0-from, d-from, col);
+    }
+  }
+
+  function drawProps(){
+    const items = [];
+    state.modules.forEach((mod, mi) => {
+      (mod.props||[]).forEach(pr => {
+        const absDepth = state.moduleStarts[mi] + pr.depth;
+        const renderDepth = absDepth - state.cameraDepth;
+        if (renderDepth < -20 || renderDepth > E.DEFAULT_PERSPECTIVE.depthMax) return;
+        const spec = PROP_BY_KIND[pr.kind]; if (!spec) return;
+        const proj = E.project(persp, pr.laneX, renderDepth);
+        items.push({ y: proj.y, fn: () => {
+          E.drawSprite(spec.id, mod.id+'#'+pr.depth+'#'+pr.laneX, proj.x, proj.y, spec.scale*proj.scale, { accent:'#7a4e3a' });
+        }});
+      });
+    });
+    return items;
+  }
+
+  function drawPersonAt(depth, laneX, dir, pal, label){
+    const renderDepth = depth - state.cameraDepth;
+    const proj = E.project(persp, laneX, renderDepth);
+    const propId = dir==='back' ? 'personBack' : dir==='front' ? 'personFront' : 'personSide';
+    const flip = dir === 'right';
+    return { y: proj.y, fn: () => {
+      E.shadow(proj.x, proj.y, proj.scale);
+      E.drawSprite(propId, 'char-'+(label||'x'), proj.x, proj.y, 2.8*proj.scale, { pal, flip });
+      if (label){
+        ctx.fillStyle = '#9aa7c7'; ctx.font = (9*Math.max(0.6,proj.scale))+'px monospace'; ctx.textAlign='center';
+        ctx.fillText(label, proj.x, proj.y - 60*proj.scale);
       }
-    }
-  }
-
-  function drawShop(b){
-    const w=b.w, h=b.h;
-    ctx.save(); ctx.translate(b.x, b.y);
-    ctx.imageSmoothingEnabled = false;
-
-    ctx.fillStyle = b.wall; ctx.fillRect(-w/2,-h,w,h);
-    ctx.fillStyle = 'rgba(0,0,0,.16)';
-    for (let yy=-h+14; yy<-6; yy+=9) ctx.fillRect(-w/2,yy,w,2);
-    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(w/2-6,-h,6,h);
-
-    const roofH = 16;
-    ctx.fillStyle = b.roof; ctx.fillRect(-w/2-4,-h-roofH,w+8,roofH);
-    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(-w/2-4,-h-4,w+8,4);
-    ctx.fillStyle = b.roofDark;
-    for (let xx=-w/2-4; xx<w/2+4; xx+=10) ctx.fillRect(xx,-h-roofH,5,roofH);
-
-    const winY = -h+14;
-    [-w/2+16, w/2-16-14].forEach(wx => {
-      ctx.fillStyle = '#241f3a'; ctx.fillRect(wx-2,winY-2,18,18);
-      ctx.fillStyle = '#ffce8a'; ctx.fillRect(wx,winY,14,14);
-      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(wx+6,winY,2,14); ctx.fillRect(wx,winY+6,14,2);
-    });
-
-    ctx.fillStyle = '#1a1420'; ctx.fillRect(-11,-30,22,30);
-    ctx.fillStyle = b.shop.bg; ctx.fillRect(-11,-30,22,10);
-
-    const signW = w-16, signX = -signW/2, signY = -h+2;
-    ctx.fillStyle = b.shop.bg; ctx.fillRect(signX,signY,signW,20);
-    ctx.fillStyle = 'rgba(0,0,0,.18)';
-    for (let i=0;i<Math.floor(signW/12);i++){
-      ctx.beginPath(); ctx.moveTo(signX+i*12,signY+20); ctx.lineTo(signX+i*12+6,signY+25); ctx.lineTo(signX+i*12+12,signY+20); ctx.fill();
-    }
-    ctx.fillStyle = '#f4e6c8'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(b.shop.name, 0, signY+14);
-
-    const lx = w/2+6, ly = -h+18;
-    ctx.strokeStyle = '#5a4a30'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(lx,-h-4); ctx.lineTo(lx,ly-8); ctx.stroke();
-    ctx.fillStyle = '#ff9d4d'; ctx.beginPath(); ctx.ellipse(lx,ly,7,9,0,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.moveTo(lx,ly-9); ctx.lineTo(lx,ly+9); ctx.stroke();
-
-    ctx.restore();
-  }
-
-  function drawCat(){
-    const c = state.cat;
-    ctx.save(); ctx.translate(c.x, c.y); ctx.scale(0.5,0.5);
-    ctx.fillStyle = '#c9a06a'; ctx.beginPath(); ctx.ellipse(0,0,16,11,0,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-9,-7); ctx.lineTo(-13,-16); ctx.lineTo(-3,-9); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(9,-7); ctx.lineTo(13,-16); ctx.lineTo(3,-9); ctx.fill();
-    ctx.restore();
-    if (c.say>0){ ctx.fillStyle='#e9e6da'; ctx.font='11px monospace'; ctx.textAlign='center';
-      ctx.fillText('にゃあ', c.x, c.y-24); }
-  }
-  function drawSparkle(s){
-    if (s.got) return;
-    const p = (St.t*0.1+s.ph) % (Math.PI*2);
-    ctx.save(); ctx.translate(s.x, s.y+Math.sin(p)*3);
-    ctx.globalAlpha = 0.7+0.3*Math.sin(p*2);
-    ctx.lineWidth=2; ctx.strokeStyle='#e8c86a';
-    ctx.beginPath();
-    for (let i=0;i<4;i++){ const a=i*Math.PI/2; ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*7,Math.sin(a)*7); }
-    ctx.stroke(); ctx.restore();
-  }
-  function drawYodomi(){
-    const y = state.yodomi; if (!y.active) return;
-    ctx.save();
-    ctx.fillStyle = 'rgba(232,200,106,.5)';
-    ctx.beginPath(); ctx.ellipse(y.x,y.y,26*y.glow,10*y.glow,0,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#e8c86a'; ctx.shadowColor = '#e8c86a'; ctx.shadowBlur = 20;
-    ctx.beginPath(); ctx.arc(y.x, y.y-18*y.glow, 9*y.glow, 0, Math.PI*2); ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = '#9aa7c7'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('ヨドミ', y.x, y.y-42);
-  }
-  function drawDust(){
-    state.dust.forEach(d => { d.life--;
-      ctx.save(); ctx.globalAlpha = Math.max(0, d.life/16*0.35);
-      ctx.fillStyle = '#9aa7c7'; ctx.beginPath(); ctx.arc(d.x,d.y,3,0,Math.PI*2); ctx.fill(); ctx.restore();
-    });
-    state.dust = state.dust.filter(d => d.life>0);
-  }
-  function drawPlayerSprite(){
-    E.shadow(P.x, P.y);
-    E.drawPerson(P.x, P.y, P.dir, {body:'#2a2540',face:'#d8b98a',hair:'#1a1730'});
-  }
-  function drawAllySprite(ally){
-    E.shadow(ally.ex, ally.ey);
-    E.drawPerson(ally.ex, ally.ey, ally.edir||{x:0,y:1},
-      {body:'#245a52',face:'#c8b98a',hair:'#123330',label:'#7fd1c1'}, ally.name);
+    }};
   }
 
   function draw(){
-    E.drawGround();
-    ctx.save(); ctx.globalAlpha = .35+.15*Math.sin(St.t*0.05);
-    ctx.strokeStyle = '#e8c86a'; ctx.lineWidth = 2; ctx.setLineDash([4,8]);
-    ctx.beginPath(); ctx.moveTo(E.W/2, E.horizon()); ctx.lineTo(E.W/2, E.H); ctx.stroke();
-    ctx.setLineDash([]); ctx.restore();
+    const { module } = moduleAt(P.depth);
+    E.drawSky(persp, module.sky.top, module.sky.horizon);
+    ctx.fillStyle = module.dusk ? '#1a1522' : '#221c30';
+    ctx.fillRect(0, E.H*persp.horizon, E.W, E.H*(1-persp.horizon));
+    drawGroundBands();
 
-    state.buildings.forEach(drawShop);
-    state.sparkles.forEach(drawSparkle);
-    drawYodomi();
-
-    const ally = Hazama.Battle.ally;
-    const list = [{y:P.y, fn:drawPlayerSprite}, {y:state.cat.y, fn:drawCat}];
-    if (ally) list.push({y:ally.ey, fn:()=>drawAllySprite(ally)});
+    const list = drawProps();
+    const soraPal = D.characters.sora.palette;
+    list.push(drawPersonAt(P.depth, P.laneX, P.dir, soraPal));
+    if (state.ally){
+      const kPal = D.allies.kanae.palette;
+      list.push(drawPersonAt(state.allyDepth, state.allyLane, state.allyDir, kPal, D.allies.kanae.name));
+    }
     E.drawYSorted(list);
-    drawDust();
   }
 
-  return { init, update, draw, bindShared, state };
+  function setAlly(join){
+    if (join){ state.ally = true; state.allyDepth = P.depth-34; state.allyLane = P.laneX; state.allyDir = 'back'; }
+    else state.ally = null;
+  }
+
+  // 戦闘に敗れた時、遭遇ゾーンの手前まで押し戻し、再挑戦できるようトリガーを解除する。
+  function retreatFromEncounter(){
+    const { module, idx } = moduleAt(P.depth);
+    const enc = module.encounter;
+    if (enc){
+      state.encounterFired[enc.id] = false;
+      P.depth = Math.max(0, state.moduleStarts[idx] + enc.fromDepth - 80);
+    }
+    P.hp = P.maxhp;
+    updateCamera();
+  }
+
+  return { init, update, draw, bindShared, state, setAlly, moduleAt, retreatFromEncounter,
+    get totalDepth(){ return state.totalDepth; } };
 })();

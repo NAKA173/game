@@ -1,109 +1,141 @@
 /*
  * main.js
- * 探索⇔バトルのモード管理とメインループ。
+ * タイトル→序章会話→探索→遭遇会話→戦闘→鎮静→仲間加入会話→探索、という
+ * 第1章「誰そ彼」体験版スライスの一本道進行を管理する。
  */
 (function(){
   const E = Hazama.Engine;
+  const D = Hazama.Data;
   const Battle = Hazama.Battle;
   const Explore = Hazama.Explore;
 
-  const P = { x:0, y:0, r:13, hp:100, maxhp:100, dir:{x:1,y:0},
-    atkCD:0, atkAnim:0, skillCD:0, shiftCD:0, iFrames:0, inSeam:false, slow:0,
-    dashX:0, dashY:0, dashT:0, items:3 };
-  const St = { t:0, gt:17*60+42, kiwa:50, slowmo:1, en:0 };
+  const P = { hp:100, maxhp:100, atkCD:0, atkAnim:0, iFrames:0 };
+  const St = { t:0 };
 
   let MODE = 'explore';
-  const DEFAULT_STATION = 'honmachi';
+  let loopStarted = false;
 
   Battle.bindShared(P, St);
-  Explore.bindShared(P, St, enterBattle);
+  Explore.bindShared(P, St, onEncounter);
 
-  // デバッグ／動作確認用：URL の ?station=shotengaimae のような形で開始駅を切り替えられる。
-  // data.js の駅データさえあれば、本町以外の駅もこの入口からそのまま歩ける。
-  function resolveStartStation(){
-    const q = new URLSearchParams(location.search).get('station');
-    if (q && Hazama.Data.stations[q]) return q;
-    return DEFAULT_STATION;
+  // ==== 会話オーバーレイ（序章・遭遇・仲間加入の全カットシーンで共用） =======
+  function playScript(script, onDone){
+    const dlg = document.getElementById('introDialogue');
+    const spk = document.getElementById('introSpeaker');
+    const txt = document.getElementById('introText');
+    let idx = 0;
+    dlg.style.display = 'flex';
+    function showLine(){
+      const line = script[idx];
+      spk.style.display = line.speaker ? 'block' : 'none';
+      spk.textContent = line.speaker;
+      txt.textContent = line.text;
+    }
+    function advance(){
+      idx++;
+      if (idx >= script.length){
+        dlg.style.display = 'none';
+        dlg.removeEventListener('click', advance);
+        document.removeEventListener('keydown', keyHandler);
+        if (onDone) onDone();
+        return;
+      }
+      showLine();
+    }
+    function keyHandler(e){ if (e.key === 'Enter') advance(); }
+    dlg.addEventListener('click', advance);
+    document.addEventListener('keydown', keyHandler);
+    showLine();
   }
 
-  function clockTxt(){
-    const m = Math.floor(St.gt) % 1440;
-    document.getElementById('clock').textContent =
-      String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+  // ==== 探索 → 遭遇 → 戦闘 ================================================
+  function onEncounter(encounterCfg){
+    MODE = 'cutscene';
+    document.getElementById('exploreBtns').style.display = 'none';
+    playScript(D.encounterScript, () => {
+      MODE = 'battle';
+      document.getElementById('battleBtns').style.display = 'grid';
+      Battle.start(encounterCfg);
+    });
   }
-
-  function enterBattle(){
-    MODE = 'battle';
-    Battle.start('yodomineko');
-  }
-  function exitBattleToExplore(){
-    MODE = 'explore';
-    document.getElementById('battleHud').style.display = 'none';
-    document.getElementById('battleBtns').style.display = 'none';
-    document.getElementById('allyMeter').style.display = 'none';
-    document.getElementById('foot').innerHTML = Battle.ally
-      ? 'WASD 移動 ／ 仲間が街にもついてくる' : 'WASD 移動 ／ ヨドミに近づくと戦闘開始';
-    P.x = E.W*0.5; P.y = E.H*0.30;
-    if (Battle.ally){ Battle.ally.ex = P.x-30; Battle.ally.ey = P.y+10; }
-  }
-
-  function onAnchorPress(){
-    Battle.anchor(() => {
-      E.fadeThen(() => { exitBattleToExplore(); }, 1900);
+  function onPacifyPress(){
+    Battle.pacify((foeKind) => {
+      E.fadeThen(() => {
+        MODE = 'cutscene';
+        document.getElementById('battleHud').style.display = 'none';
+        document.getElementById('battleBtns').style.display = 'none';
+        playScript(D.joinScript, () => {
+          Explore.setAlly(true);
+          MODE = 'explore';
+          document.getElementById('exploreBtns').style.display = 'grid';
+          document.getElementById('foot').innerHTML = 'WASD 移動 ／ 鐘江が ついてくる';
+          E.banner('第1章 ここまで', '（体験版はここで終わりです）', 2600);
+        });
+      }, 1700);
     });
   }
   function onPlayerLose(){
-    E.banner('気絶','際に のまれた…',1400);
+    E.banner('気絶','際に のまれかけた…',1400);
     E.fadeThen(() => {
       P.hp = P.maxhp; MODE = 'explore';
       document.getElementById('battleHud').style.display = 'none';
       document.getElementById('battleBtns').style.display = 'none';
-      document.getElementById('foot').innerHTML = 'WASD 移動 ／ ヨドミに近づくと戦闘開始';
-      P.x = E.W*0.5; P.y = E.H*0.7;
+      document.getElementById('exploreBtns').style.display = 'grid';
+      Explore.retreatFromEncounter();
     }, 1500);
   }
 
+  // ==== 開始 ==============================================================
   function start(){
     document.getElementById('introPane').style.display = 'none';
     document.getElementById('wrap').style.display = 'block';
     document.getElementById('touch').classList.add('on');
     E.resize();
-    const stationId = resolveStartStation();
-    Explore.init(stationId);
-    document.getElementById('enCur').textContent = '縁 0';
-    const station = Hazama.Data.stations[stationId];
-    E.banner(station.name || '？？？','街の奥に ヨドミの気配', 1200);
-    clockTxt();
-    requestAnimationFrame(loop);
+
+    MODE = 'explore';
+    document.getElementById('battleHud').style.display = 'none';
+    document.getElementById('battleBtns').style.display = 'none';
+    document.getElementById('exploreBtns').style.display = 'grid';
+
+    Explore.init();
+    if (!loopStarted){ loopStarted = true; requestAnimationFrame(loop); }
+
+    MODE = 'cutscene';
+    document.getElementById('exploreBtns').style.display = 'none';
+    playScript(D.introScript, () => {
+      MODE = 'explore';
+      document.getElementById('exploreBtns').style.display = 'grid';
+    });
   }
 
+  // ==== メインループ ========================================================
+  const MODULES = { explore: Explore, battle: Battle };
   let acc = 0;
   function loop(){
-    acc += St.slowmo;
+    acc += 1;
     while (acc >= 1){
-      St.t++; if (St.t % 2 === 0){ St.gt += 0.05; clockTxt(); }
-      if (MODE === 'explore') Explore.update(); else Battle.update(onPlayerLose);
+      St.t++;
+      if (MODE === 'battle') Battle.update(onPlayerLose);
+      else if (MODE !== 'cutscene') MODULES[MODE].update();
       acc--;
     }
-    if (MODE === 'explore') Explore.draw(); else Battle.draw();
+    if (MODE === 'cutscene') Explore.draw(); else MODULES[MODE].draw();
     requestAnimationFrame(loop);
   }
 
   E.bindKeyboard(k => {
     if (MODE !== 'battle') return;
     if (k === 'j') Battle.attack();
-    if (k === 'k') Battle.shift();
-    if (k === 'u') Battle.skill();
-    if (k === 'i') Battle.useItem();
-    if (k === 'l') onAnchorPress();
+    if (k === 'k') onPacifyPress();
   });
   E.bindStick();
   E.bindButton('tAtk', () => Battle.attack());
-  E.bindButton('tShift', () => Battle.shift());
-  E.bindButton('tSkill', () => Battle.skill());
-  E.bindButton('tItem', () => Battle.useItem());
-  E.bindButton('tAnchor', onAnchorPress);
+  E.bindButton('tPacify', onPacifyPress);
+  E.bindHold('tDash', () => { E.keys.run = true; }, () => { E.keys.run = false; });
   addEventListener('resize', () => E.resize());
 
+  document.getElementById('newGameBtn').addEventListener('click', start);
+
+  // 外部からのデバッグ起動用。
   window.Hazama.start = start;
 })();

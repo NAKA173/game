@@ -1,7 +1,7 @@
 :root{
   --ink:#12131a;--dusk:#2a2540;--dusk2:#3d3560;
   --seam:#e8c86a;--seam-dim:#8a7a3f;--mist:#9aa7c7;
-  --paper:#e9e6da;--danger:#d0596b;--ok:#6ac2a0;--allyc:#7fd1c1;
+  --paper:#e9e6da;--danger:#d0596b;--ok:#6ac2a0;
   --mono:'DejaVu Sans Mono','Courier New',monospace;
   --sans:'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
 }
@@ -11,7 +11,7 @@ body{background:radial-gradient(ellipse at 50% 30%,var(--dusk) 0%,var(--ink) 70%
   color:var(--paper);font-family:var(--sans);display:flex;align-items:center;justify-content:center;
   min-height:100vh;padding:12px;-webkit-user-select:none;user-select:none;overflow:hidden}
 #app{width:100%;max-width:780px}
-.frame{border:1px solid var(--dusk2);border-radius:14px;background:rgba(18,19,26,.82);
+.frame{position:relative;border:1px solid var(--dusk2);border-radius:14px;background:rgba(18,19,26,.82);
   box-shadow:0 0 0 1px rgba(232,200,106,.06),0 18px 50px rgba(0,0,0,.55);overflow:hidden}
 .top{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;
   border-bottom:1px solid var(--dusk2);font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--seam-dim)}
@@ -23,9 +23,7 @@ canvas{display:block;width:100%}
 .meter .lab{color:var(--mist);letter-spacing:.08em;margin-bottom:3px}
 .bar{height:7px;border:1px solid var(--dusk2);border-radius:4px;overflow:hidden;background:rgba(0,0,0,.4)}
 .bar>i{display:block;height:100%;transition:width .12s}
-.hp>i{background:var(--danger)}.kw>i{background:var(--seam)}.al>i{background:var(--allyc)}
-.encur{position:absolute;right:12px;top:8px;font-family:var(--mono);font-size:12px;color:var(--seam);
-  background:rgba(0,0,0,.35);border:1px solid var(--dusk2);border-radius:8px;padding:4px 9px;pointer-events:none}
+.hp>i{background:var(--danger)}
 .banner{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);text-align:center;
   pointer-events:none;font-family:var(--mono);letter-spacing:.13em;opacity:0;transition:opacity .2s}
 .banner.show{opacity:1}
@@ -42,6 +40,15 @@ canvas{display:block;width:100%}
 .keys b{color:var(--seam)}
 .startbtn{display:block;width:100%;margin:14px 0 2px;padding:13px;font-family:var(--mono);
   letter-spacing:.16em;font-size:13px;color:var(--ink);background:var(--seam);border:none;border-radius:9px;cursor:pointer}
+
+.introDialogue{position:absolute;inset:0;z-index:6;background:rgba(6,5,10,.55);
+  display:flex;align-items:flex-end;justify-content:center;padding:16px;cursor:pointer}
+.introBox{width:100%;background:var(--ink);border:1px solid var(--dusk2);border-radius:10px;
+  padding:14px 16px;box-shadow:0 0 0 1px rgba(232,200,106,.06)}
+.introSpeaker{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--seam);margin-bottom:6px}
+.introText{font-size:12.5px;line-height:1.85;color:var(--paper);min-height:3.7em}
+.introHint{font-family:var(--mono);font-size:9px;color:var(--seam-dim);text-align:right;margin-top:8px}
+
 .foot{padding:8px 14px 12px;font-family:var(--mono);font-size:9.5px;color:var(--seam-dim);
   letter-spacing:.05em;text-align:center;border-top:1px solid var(--dusk2)}
 #touch{position:absolute;inset:0;display:none;pointer-events:none}

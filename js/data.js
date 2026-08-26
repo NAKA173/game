@@ -1,172 +1,122 @@
 /*
  * data.js
- * 設計書・食べ歩き帖マスターの実データをもとにした最小データセット。
- * まずは「本町」エリア1駅分だけを実データ化。他の24駅も同じ形式で追加していける。
+ * 『あわいの旅路』第1章「誰そ彼」体験版スライスのデータ定義。
+ * 章立て・経済・アプリ群は設計書上は膨大だが、このスライスは本町エリア限定・
+ * 空単独・鐘江との出会いまでを縦に通すことだけを目的に絞ってある。
  */
 window.Hazama = window.Hazama || {};
 
 Hazama.Data = {
-
-  // 駅データ（境目線 全25駅。食べ歩き帖マスターの実データを反映）
-  // type: 'major'=主要駅 / 'minor'=小規模駅 / 'pass'=通過駅(店舗なし) / 'special'=特殊条件駅
-  stations: {
-
-    // ── 環状線 ──────────────────────────────
-    honmachi: { name:'本町', line:'環状線', type:'major', shops:[
-      { id:'komachi_pan', name:'こまち製パン', genre:'パン', bg:'#5e4a2e',
-        menu:[{n:'あんぱん',price:120},{n:'カツサンド',price:380},{n:'特製クリームパン',price:780}], favorFor:'場所の際' },
-      { id:'honmachi_shokudo', name:'本町食堂', genre:'定食・丼', bg:'#7a2e2e',
-        menu:[{n:'かけそば',price:200},{n:'親子丼',price:520},{n:'上天丼',price:980}], favorFor:'状態の際' },
-      { id:'ekimae_stand', name:'駅前スタンド', genre:'甘味', bg:'#6b3a63',
-        menu:[{n:'ソフトクリーム',price:150},{n:'パフェ',price:450},{n:'特製あんみつ',price:720}], favorFor:'時間の際' },
-    ]},
-    futatsumori: { name:'二ツ森', line:'環状線', type:'minor', shops:[
-      { id:'futatsumori_bunko', name:'二ツ森文庫喫茶', genre:'甘味・軽食', bg:'#6b3a63',
-        menu:[{n:'珈琲ゼリー',price:180},{n:'ホットケーキ',price:480},{n:'名物モンブラン',price:850}], favorFor:'時間の際' },
-    ]},
-    shotengaimae: { name:'商店街前', line:'環状線', type:'major', shops:[
-      { id:'hokkyo_ramen', name:'北境ラーメン', genre:'ラーメン', bg:'#7a2e2e',
-        menu:[{n:'しょうゆ',price:420},{n:'味噌チャーシュー',price:680},{n:'特製全部のせ',price:1200}], favorFor:'状態の際' },
-      { id:'shotengai_burger', name:'商店街バーガー', genre:'ハンバーガー', bg:'#7a4a2e',
-        menu:[{n:'ベーシック',price:300},{n:'照り焼き',price:600},{n:'際バーガー',price:1100}], favorFor:'場所の際' },
-      { id:'kasumi_amamidokoro', name:'甘味処 かすみ', genre:'和菓子', bg:'#5e3a63',
-        menu:[{n:'みたらし団子',price:130},{n:'大福',price:350},{n:'上生菓子',price:700}], favorFor:'時間の際' },
-      { id:'yorozu_shoten', name:'よろず商店', genre:'駄菓子・雑貨', bg:'#5e5a2e',
-        menu:[{n:'駄菓子詰め',price:150},{n:'カップ麺',price:150},{n:'缶詰各種',price:300}], favorFor:'万能' },
-    ]},
-    kamotsuekiato: { name:'貨物駅跡', line:'環状線', type:'pass', shops:[] },
-    oiwake: { name:'追分', line:'環状線・野際支線・幻の支線', type:'major', shops:[
-      { id:'oiwake_drivein', name:'追分ドライブイン', genre:'定食・丼', bg:'#6b4a2e',
-        menu:[{n:'カレーライス',price:350},{n:'かつ丼',price:650},{n:'スタミナ定食',price:1000}], favorFor:'状態の際' },
-      { id:'wakaremichi_chaya', name:'分かれ道の茶屋', genre:'甘味', bg:'#6b3a63',
-        menu:[{n:'ところてん',price:150},{n:'かき氷（夏）',price:300},{n:'クリームぜんざい',price:550}], favorFor:'時間の際' },
-    ]},
-    nakasu: { name:'中洲', line:'環状線', type:'minor', shops:[
-      { id:'nakasu_kawadoko', name:'中洲の川床茶屋', genre:'海鮮・川魚', bg:'#2e4f5e',
-        menu:[{n:'川魚の塩焼き',price:350},{n:'うな重（並）',price:900},{n:'うな重（特上）',price:1500}], favorFor:'場所の際' },
-    ]},
-    hashiba: { name:'橋場', line:'環状線・臨海支線', type:'major', shops:[
-      { id:'hashiba_meshidokoro', name:'橋場めし処', genre:'定食・丼', bg:'#6b4a2e',
-        menu:[{n:'焼き魚定食',price:400},{n:'生姜焼き定食',price:620},{n:'特上まぐろ丼',price:1050}], favorFor:'状態の際' },
-      { id:'hashinotamotoya', name:'橋のたもと屋', genre:'おでん', bg:'#7a5a2e',
-        menu:[{n:'おでん3種',price:200},{n:'おでん盛り',price:500},{n:'極上おでん',price:900}], favorFor:'状態の際' },
-    ]},
-    wasurezaka: { name:'忘坂', line:'環状線', type:'minor', shops:[
-      { id:'wasurezaka_amazake', name:'忘坂の甘酒屋台', genre:'甘味・駄菓子', bg:'#6b3a63',
-        menu:[{n:'甘酒',price:130},{n:'みたらし',price:250},{n:'忘れ団子（名物）',price:600}], favorFor:'時間の際' },
-    ]},
-    miyanosakai: { name:'宮ノ境', line:'環状線・田園支線', type:'major', shops:[
-      { id:'miyanosakai_sandochaya', name:'宮ノ境 参道茶屋', genre:'和菓子', bg:'#5e3a63',
-        menu:[{n:'草餅',price:150},{n:'桜餅（春限定）',price:400},{n:'上用まんじゅう',price:780}], favorFor:'時間の際' },
-      { id:'monzen_soba', name:'門前そば', genre:'そば', bg:'#2e5e4a',
-        menu:[{n:'かけそば',price:300},{n:'天ざる',price:700},{n:'特上鴨南蛮',price:1150}], favorFor:'状態の際' },
-    ]},
-    tsukino: { name:'月野', line:'環状線', type:'special', note:'夜間限定', shops:[
-      { id:'tsukino_yonakisoba', name:'月野の夜鳴きそば', genre:'ラーメン', bg:'#7a2e2e',
-        menu:[{n:'夜鳴きそば',price:400},{n:'月見ラーメン',price:700},{n:'満月特製',price:1250}], favorFor:'状態の際' },
-      { id:'tsukimi_dangoya', name:'月見団子屋（夜のみ）', genre:'和菓子', bg:'#5e3a63',
-        menu:[{n:'月見団子',price:150},{n:'三色団子',price:400},{n:'十五夜盛り',price:900}], favorFor:'時間の際・レア' },
-    ]},
-
-    // ── 野際支線 ──────────────────────────────
-    nogiwa: { name:'野際', line:'野際支線', type:'major', shops:[
-      { id:'nogiwa_bbq', name:'野際バーベキュー', genre:'肉', bg:'#7a2e2e',
-        menu:[{n:'焼肉丼',price:500},{n:'ステーキ',price:950},{n:'特上カルビ盛り',price:1400}], favorFor:'状態の際' },
-      { id:'nogiwa_parlor', name:'野際パーラー', genre:'甘味', bg:'#6b3a63',
-        menu:[{n:'プリン',price:200},{n:'クリームソーダ',price:450},{n:'際パフェ',price:800}], favorFor:'時間の際' },
-    ]},
-    yamagiwa: { name:'山際', line:'野際支線', type:'major', shops:[
-      { id:'yamagiwa_sansaisoba', name:'山際 山菜そば処', genre:'そば', bg:'#2e5e4a',
-        menu:[{n:'山菜そば',price:350},{n:'きのこ天そば',price:680},{n:'特上けんちんそば',price:1100}], favorFor:'状態の際' },
-      { id:'toge_dangoya', name:'峠の団子屋', genre:'和菓子', bg:'#5e3a63',
-        menu:[{n:'焼き団子',price:150},{n:'五平餅',price:350},{n:'栗まんじゅう（秋）',price:700}], favorFor:'時間の際' },
-    ]},
-    mumei: { name:null, line:'野際支線', type:'minor', note:'名前が擦り切れて読めない無人駅', shops:[] },
-    shimizu: { name:'清水', line:'野際支線', type:'special', note:'秘境・臨時停車のみ', shops:[
-      { id:'shimizu_yusuichaya', name:'清水の湧水茶屋', genre:'精進・甘味', bg:'#3a5e4a',
-        menu:[{n:'湧水豆腐',price:300},{n:'山菜膳',price:800},{n:'幻の清水そば',price:1600}], favorFor:'レア' },
-    ]},
-
-    // ── 田園支線 ──────────────────────────────
-    inamori: { name:'稲守', line:'田園支線', type:'minor', shops:[
-      { id:'inamori_chokubai', name:'稲守 農産直売スタンド', genre:'やさい・おにぎり', bg:'#4a5e2e',
-        menu:[{n:'焼きおにぎり',price:120},{n:'新米おにぎり',price:300},{n:'特選おにぎり膳',price:650}], favorFor:'場所の際' },
-    ]},
-    hozakai: { name:'穂境', line:'田園支線', type:'major', shops:[
-      { id:'hozakai_kamameshi', name:'穂境の釜めし屋', genre:'定食・丼', bg:'#6b4a2e',
-        menu:[{n:'五目釜めし',price:400},{n:'鶏釜めし',price:700},{n:'特上松茸釜めし（秋）',price:1300}], favorFor:'状態の際' },
-      { id:'hozakai_kanmido', name:'穂境甘味堂', genre:'和菓子', bg:'#5e3a63',
-        menu:[{n:'おはぎ',price:150},{n:'みたらし',price:350},{n:'季節の練り切り',price:750}], favorFor:'時間の際' },
-    ]},
-    nokyomae: { name:'農協前', line:'田園支線', type:'minor', shops:[
-      { id:'nokyomae_chokubai', name:'農協前 直売コーナー', genre:'やさい', bg:'#4a5e2e',
-        menu:[{n:'季節の野菜スティック',price:100},{n:'漬物盛り',price:300},{n:'特選野菜膳',price:600}], favorFor:'場所の際' },
-    ]},
-    dambata: { name:'段畑', line:'田園支線', type:'minor', note:'無人の終着駅・自販機1台のみ', shops:[
-      { id:'dambata_jihanki', name:'段畑の自販機', genre:'飲料', bg:'#2e4a5e',
-        menu:[{n:'冷たいお茶',price:130},{n:'缶しるこ',price:150},{n:'謎のご当地ドリンク',price:250}], favorFor:'万能' },
-    ]},
-
-    // ── 臨海支線 ──────────────────────────────
-    misakihama: { name:'岬浜', line:'臨海支線', type:'minor', shops:[
-      { id:'misakihama_isodachi', name:'岬浜 磯の立ち食い', genre:'海鮮', bg:'#2e4f5e',
-        menu:[{n:'あおさ汁',price:200},{n:'海鮮丼（並）',price:750},{n:'特上海鮮丼',price:1400}], favorFor:'場所の際' },
-    ]},
-    hamadori: { name:'浜通', line:'臨海支線', type:'minor', shops:[
-      { id:'hamadori_gampeki', name:'浜通 岸壁食堂', genre:'定食・丼', bg:'#6b4a2e',
-        menu:[{n:'焼き魚定食',price:400},{n:'海鮮フライ定食',price:650},{n:'大盛り漁師飯',price:1000}], favorFor:'状態の際' },
-      { id:'hamadori_ramen', name:'浜通ラーメン', genre:'ラーメン', bg:'#7a2e2e',
-        menu:[{n:'塩ラーメン',price:450},{n:'磯ラーメン',price:700},{n:'特製海老そば',price:1200}], favorFor:'状態の際' },
-    ]},
-    minatomachi: { name:'湊町', line:'臨海支線', type:'major', shops:[
-      { id:'minatomachi_kaiten', name:'湊町 回転寿司', genre:'海鮮・寿司', bg:'#2e4f5e',
-        menu:[{n:'にぎり盛り（並）',price:500},{n:'特上にぎり',price:1000},{n:'大漁盛り',price:1600}], favorFor:'場所の際' },
-      { id:'minato_kakigori', name:'港のかき氷屋（夏）', genre:'甘味', bg:'#6b3a63',
-        menu:[{n:'氷いちご',price:150},{n:'氷あずき',price:300},{n:'特製みぞれ',price:500}], favorFor:'時間の際' },
-      { id:'minatomachi_pan', name:'湊町パン工房', genre:'パン', bg:'#5e4a2e',
-        menu:[{n:'塩パン',price:130},{n:'カレーパン',price:350},{n:'際あんぱん',price:700}], favorFor:'場所の際' },
-    ]},
-    watarise: { name:'渡瀬', line:'臨海支線', type:'minor', note:'終着駅・渡し船乗り場', shops:[
-      { id:'watarise_chaya', name:'渡瀬 渡し場茶屋', genre:'海鮮・甘味', bg:'#3a5a5e',
-        menu:[{n:'あさり汁',price:250},{n:'焼き蛤',price:700},{n:'対岸を望む特製膳',price:1300}], favorFor:'場所の際・レア' },
-    ]},
-
-    // ── 幻の支線（すべて特殊条件駅、店舗なし） ──────────────────────────────
-    tokimori: { name:'時守', line:'幻の支線', type:'special', note:'0時ちょうどにだけ路線図に現れる', shops:[] },
-    kasumigaya: { name:'霞ヶ谷', line:'幻の支線', type:'special', note:'輪郭が薄く、降車が確実でない', shops:[] },
-    ikuno: { name:'幾野', line:'幻の支線', type:'special', note:'見るたびに路線図上の駅数が矛盾する', shops:[] },
-    higan: { name:'彼岸', line:'幻の支線', type:'special', note:'終点。クリア後限定で幻のメニューが1つだけ出る', shops:[
-      { id:'higan_chaya', name:'彼岸の茶屋', genre:'？？？', bg:'#8a7a3f',
-        menu:[{n:'幻のメニュー（クリア後限定・非売品）',price:null}], favorFor:'？' },
-    ]},
+  // ==== 主人公 ==========================================================
+  characters: {
+    sora: {
+      name:'空', reading:'そら', area:'新市街・本町',
+      blurb:'本町のマンション育ち。小さい頃から「際」がうっすら見えていたが、誰にも言えずにいる。',
+      palette: { body:'#23262e', bodyLo:'#171921', bodyHi:'#343945', face:'#e3c39a', hair:'#1a1c22', collar:'#c94b4b' },
+    },
   },
 
-  // あわいもの（敵/仲間になり得る個体）の基礎ステータス
+  // ==== あわいもの（第1章は鐘江のみ・物語固定・収集要素なし） ============
+  allies: {
+    kanae: {
+      name:'鐘江', reading:'かなえ', motif:'鐘の音', role:'バランス／鎮静技',
+      palette: { body:'#5a4a7a', bodyLo:'#40355c', bodyHi:'#7a68a0', accent:'#e8c86a' },
+      hp:70, atkMin:5, atkMax:9, atkCD:60,
+      note:'言葉を持たない。鐘の音で応える。',
+    },
+  },
+
+  // ==== 敵 ================================================================
   foes: {
-    yodomineko: {
-      name: 'よどみネコ', r:16, hp:100, maxhp:100, atkCD:150, atkSpd:1.1,
-      attribute:'状態の際', wobbleThreshold:0.30,
-    },
-    tasogareazarashi: {
-      name: 'たそがれあざらし', r:18, hp:150, maxhp:150, atkCD:110, atkSpd:1.4,
-      attribute:'場所の際', wobbleThreshold:0.30,
+    kanae_wild: {
+      name:'暴走した鐘江', hp:160, maxhp:160, r:20, atkCD:130, atkSpd:1.0,
+      wobbleThreshold:0.35, sprite:'foeBell',
+      atkMin:9, atkMax:14,
     },
   },
 
-  // アイテム（現時点では戦闘で使う最小セットのみ。もちものアプリ全体は別途拡張）
-  items: {
-    nagorimizu: { name:'なごり水', category:'薬', effect:'heal', value:30, category2:'下位' },
+  // ==== 本町：道モジュール（直線区間の連なり）======================
+  // depth は区間をまたいだ累積のワールド深度。laneX は道の中心を0とした左右オフセット。
+  // 各区間は halfWidth（歩ける横幅の半分）と、街並みとして並べる建物・装飾のリストを持つ。
+  town: {
+    id:'honmachi', name:'本町',
+    modules: [
+      {
+        id:'school_street', name:'通学路', len:300, halfWidth:70,
+        sky:{ top:'#3a2f4a', horizon:'#e8a25a' },
+        props: [
+          { kind:'house', depth:60,  laneX:-58 },
+          { kind:'house', depth:60,  laneX: 58 },
+          { kind:'tree',  depth:130, laneX:-66 },
+          { kind:'house', depth:190, laneX:-58 },
+          { kind:'house', depth:190, laneX: 58 },
+          { kind:'tree',  depth:250, laneX: 66 },
+        ],
+      },
+      {
+        id:'main_street', name:'本町大通り', len:380, halfWidth:92,
+        sky:{ top:'#33283f', horizon:'#e0955a' },
+        props: [
+          { kind:'shop',    depth:40,  laneX:-78 },
+          { kind:'shop',    depth:40,  laneX: 78 },
+          { kind:'exhibit', depth:160, laneX: 60, label:'明澄会 再開発展示「明るい街、確かな明日」' },
+          { kind:'shop',    depth:220, laneX:-78 },
+          { kind:'tree',    depth:300, laneX:-84 },
+          { kind:'tree',    depth:300, laneX: 84 },
+        ],
+      },
+      {
+        id:'dusk_backalley', name:'黄昏の裏路地', len:260, halfWidth:46,
+        dusk:true,
+        sky:{ top:'#1c1830', horizon:'#a85a3a' },
+        props: [
+          { kind:'wall', depth:60,  laneX:-40 },
+          { kind:'wall', depth:60,  laneX: 40 },
+          { kind:'wall', depth:160, laneX:-40 },
+          { kind:'wall', depth:160, laneX: 40 },
+        ],
+        // このゾーンの奥（区間内の深度180〜260＝終端付近）に踏み込むと、鐘の音の気配→暴走鐘江との遭遇バトルへ。
+        // fromDepth/toDepth は区間内ローカル深度（区間の先頭=0〜len）。
+        encounter: { fromDepth:180, toDepth:260, foe:'kanae_wild', id:'kanae_first' },
+      },
+    ],
+    // 空の家前＝ゲーム開始位置。
+    startDepth: 20, startLane: 0,
   },
 
-  // 際力・こうげき等のバランス定数（企画書の数値をそのまま定数化）
+  // ==== 序章の会話（本町・学校帰り、探索開始前） ==========================
+  introScript: [
+    { speaker:'', text:'（学校帰り、本町の駅前広場。夕方の光が長く伸びている）' },
+    { speaker:'空', text:'……今日も長かったな。' },
+    { speaker:'', text:'（広場の一角に、明澄会の再開発展示パネル。「明るい街、確かな明日」）' },
+    { speaker:'空', text:'また新しい看板、増えてる。' },
+    { speaker:'', text:'（ふと、視界の端で何かが揺らいだ気がした）' },
+    { speaker:'空', text:'……気のせい、だよな。' },
+    { speaker:'', text:'空は昔から、時々「薄いもの」が見える。誰にも言ったことはない。今日は、いつもよりはっきりしている気がした。' },
+  ],
+  // ==== 黄昏の裏路地・鐘江との遭遇（戦闘直前に再生） ========================
+  encounterScript: [
+    { speaker:'', text:'（鐘の音だけが響く、静かな路地）' },
+    { speaker:'空', text:'……こっちから、聞こえる。' },
+    { speaker:'', text:'（路地の奥に、輪郭の揺らいだ何かがうずくまっている。鐘のような音が、悲鳴のように響く）' },
+    { speaker:'空', text:'うわっ……なんだ、これ。' },
+    { speaker:'', text:'空は初めて、これほどはっきりと「際」を見た。' },
+  ],
+  // ==== 鎮静後・鐘江が仲間になる会話 ======================================
+  joinScript: [
+    { speaker:'', text:'（鐘の音が、静かに凪いでいく）' },
+    { speaker:'空', text:'……大丈夫か？' },
+    { speaker:'', text:'（鐘の形をした揺らぎが、小さく頷くように鳴った）' },
+    { speaker:'空', text:'鐘江、って呼んでいいか。何となく、そう思ったんだ。' },
+    { speaker:'', text:'鐘江は答えない。ただ、優しい音で応えた。' },
+  ],
+
+  // ==== バトル・移動の数値バランス ========================================
   balance: {
-    playerSpd: 2.6,
-    attackDamageMin: 9, attackDamageMax: 13,
-    critMultiplier: 2.4,
-    shiftCost: 14, shiftCooldown: 42, iFrames: 16,
-    skillCost: 20, skillCooldown: 95, skillRadius: 46,
-    skillDamageMin: 14, skillDamageMax: 20, skillCritMultiplier: 2.2,
-    anchorBaseChance: 0.45, anchorKiwaFactor: 0.004, anchorWobbleFactor: 0.3,
-    kiwaRegenPerAttack: 7, kiwaRegenIdleInterval: 40,
+    playerSpd: 3.2, dashMultiplier: 1.7,
+    attackDamageMin: 8, attackDamageMax: 14, critMultiplier: 1.8,
+    pacifyRange: 46,       // 鎮静技が届く間合い
+    pacifyGaugeMax: 300,   // 揺らぎ状態の持続フレーム数（この間に鎮静技を当てる）
+    allyAtkCD: 55, allyRange: 40,
   },
 };
